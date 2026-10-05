@@ -1,0 +1,16 @@
+<!--
+    Input:
+        hardware/qcom-caf/bootctrl/aidl/boot-service.qti.xml
+    Kept as a *framework* typed fragment: a device-typed fragment in
+    /system/etc/vintf/manifest/ aborts hwservicemanager's framework manifest
+    parsing, which makes it disable itself (hwservicemanager.disabled=true) and
+    breaks HIDL keymaster registration. The recovery manifest reader forces the
+    schema type to DEVICE, so the AIDL boot HAL stays declared for
+    servicemanager and lazy service start.
+-->
+<manifest version="9.0" type="framework">
+    <hal format="aidl">
+        <name>android.hardware.boot</name>
+        <fqname>IBootControl/default</fqname>
+    </hal>
+</manifest>

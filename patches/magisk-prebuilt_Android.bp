@@ -1,0 +1,12 @@
+// AOSP android-16.0.0_r1 ships external/magisk-prebuilt/Android.mk as a 0-byte
+// file, which Soong rejects as a fatal error. With TWRP_REQUIRED_MODULES /
+// TW_INCLUDE_RESETPROP disabled in BoardConfig.mk, this file restores the header
+// library that other recovery modules expect.
+cc_library_headers {
+    name: "resetprop_headers",
+    export_include_dirs: [
+        "include",
+        "utils",
+    ],
+    recovery_available: true,
+}
