@@ -31,22 +31,38 @@ fonts-dejavu-core` (otherwise `RecoveryImageGenerator` aborts with
 
 * This tree is built with `BOARD_USES_RECOVERY_AS_BOOT := true`: the boot image *is*
   the recovery ramdisk and is also the normal boot image.
-* The build adds **`twrpfastboot=1` to the boot header cmdline**
-  (`BOARD_KERNEL_CMDLINE += twrpfastboot=1`, see `BoardConfig.mk`), exactly like every
-  other pipa recovery image (OrangeFox R11.3/R12.0, twrp-last). TWRP patched
-  `system/core/init/first_stage_init.cpp` so that this flag **disables** the
-  `androidboot.force_normal_boot` hand-off to the installed system — which is what a
-  normal boot (and `fastboot boot`) would otherwise do. Therefore:
+* **Two images, two jobs** — the flashed image must *not* carry the flag, otherwise the
+  device can never boot the ROM again:
+
+  | image | cmdline | use |
+  |---|---|---|
+  | `boot.img` (build output) | *empty* | `fastboot flash boot_b boot.img` → normal boot goes to the ROM, `adb reboot recovery` (or the key combo) boots TWRP |
+  | `boot-fbboot.img` (generated) | `twrpfastboot=1` | `fastboot boot boot-fbboot.img` → boots TWRP directly, nothing flashed |
+
+  TWRP patched `system/core/init/first_stage_init.cpp` so the cmdline flag
+  `twrpfastboot=1` disables the `androidboot.force_normal_boot` hand-off to the
+  installed system (which a normal boot, and `fastboot boot`, would otherwise do).
+  Generate the temporary variant with:
 
   ```bash
-  fastboot boot boot.img            # boots TWRP directly (temporary, nothing flashed)
-  fastboot flash boot_b boot.img    # TWRP installed; device then always starts into recovery
+  python3 device/xiaomi/pipa/tools/make_fbboot_image.py
+  # -> out/target/product/pipa/boot-fbboot.img
   ```
 
-  ⚠️ While this image is installed in the boot partition the ROM does **not** boot
-  (that is the trade-off of the flag). Flash back the ROM's `boot.img` (or any
-  flag-free boot image) to boot ColorOS again — that is also how the previous
-  OrangeFox/twrp-last images behave.
+  (Note `BOARD_KERNEL_CMDLINE` cannot be used for this in a
+  `BOARD_USES_RECOVERY_AS_BOOT` build — see the comment in `BoardConfig.mk`.)
+
+* **Boot header `os_version` / `os_patch_level` matters for /data decryption.**
+  Verified on device: with this build’s own header values
+  (`os_version=16.0.0`, `os_patch_level=2099-12`, i.e. `0x2000063c`) the keymaster TA
+  accepts the `/metadata` key blob; with the header inherited from the ROM’s
+  `boot.img` (`17 / 2026-09`) the TA answers `KEY_REQUIRES_UPGRADE (-62)` and the
+  following `upgradeKey()` fails with `INVALID_ARGUMENT (-38)` → TWRP cannot decrypt
+  /data. This is why *TWRP’s “Install Recovery Ramdisk”* (which repacks the existing
+  boot image, i.e. the ROM’s header) breaks decryption, while flashing this image with
+  fastboot works. Patch the header of such an image with
+  `tools/make_fbboot_image.py`’s sibling helper `tools/patch_boot_header.py`
+  (or just flash the build output).
 
 ---
 

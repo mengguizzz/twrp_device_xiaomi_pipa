@@ -1,0 +1,86 @@
+// ---------------------------------------------------------------------------
+// Normalise the freshly repacked boot image before flashing it.
+//
+// The repacked image is built from the boot image that is currently installed
+// (usually the ROM's), so it inherits that image's boot header. Two fields must
+// not be inherited:
+//
+//  * cmdline: a template carrying twrpfastboot=1 would produce a flashed image
+//    whose first-stage init never hands off to the installed system, i.e. the
+//    device would always start into recovery. Drop that flag here - the temporary
+//    image used with `fastboot boot` keeps it, see
+//    device/xiaomi/pipa/tools/make_fbboot_image.py.
+//  * os_version / os_patch_level: the bootloader/TEE reports these to Keymaster as
+//    the boot patchlevel and the TA compares it with the value stored in the
+//    /metadata key blob. With a header inherited from the ROM's boot.img the TA
+//    answers KEY_REQUIRES_UPGRADE (-62) and the following upgradeKey() fails with
+//    INVALID_ARGUMENT (-38), so /data cannot be decrypted. Use the values this
+//    recovery was built with (0x2000063c = Android 16.0.0 + 2099-12); override
+//    with the property twrp.bootimage.os_version.
+static void Normalize_Repacked_Image(const std::string& path) {
+	constexpr off_t kOsVersionOffset = 0x10;
+	constexpr off_t kCmdlineOffset = 0x2C;
+	constexpr size_t kCmdlineSize = 512;
+	constexpr uint32_t kDefaultOsVersion = 0x2000063C;
+
+	android::base::unique_fd fd(open(path.c_str(), O_RDWR | O_LARGEFILE));
+	if (fd.get() < 0) {
+		LOGERR("Normalize: cannot open %s\n", path.c_str());
+		return;
+	}
+
+	uint8_t header[kCmdlineOffset + kCmdlineSize];
+	if (pread(fd.get(), header, sizeof(header), 0) != (ssize_t)sizeof(header)) {
+		LOGERR("Normalize: cannot read the boot header of %s\n", path.c_str());
+		return;
+	}
+	if (memcmp(header, "ANDROID!", 8) != 0) {
+		LOGERR("Normalize: %s is not an Android boot image\n", path.c_str());
+		return;
+	}
+
+	uint32_t header_version = 0;
+	memcpy(&header_version, header + 0x28, sizeof(header_version));
+	if (header_version < 3) {
+		LOGINFO("Normalize: %s uses boot header v%u, nothing to do\n", path.c_str(), header_version);
+		return;
+	}
+
+	char cmdline[kCmdlineSize + 1] = {};
+	memcpy(cmdline, header + kCmdlineOffset, kCmdlineSize);
+	std::string new_cmdline;
+	{
+		std::string cur(cmdline);
+		size_t pos = 0;
+		while (pos < cur.size()) {
+			size_t end = cur.find(' ', pos);
+			std::string token = cur.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
+			if (!token.empty() && token != "twrpfastboot=1") {
+				if (!new_cmdline.empty()) new_cmdline += ' ';
+				new_cmdline += token;
+			}
+			if (end == std::string::npos) break;
+			pos = end + 1;
+		}
+	}
+
+	uint32_t os_version = kDefaultOsVersion;
+	std::string prop = android::base::GetProperty("twrp.bootimage.os_version", "");
+	if (!prop.empty()) {
+		char* end = nullptr;
+		unsigned long parsed = strtoul(prop.c_str(), &end, 0);
+		if (end != prop.c_str() && parsed <= 0xFFFFFFFFUL) os_version = (uint32_t)parsed;
+	}
+
+	std::string cmdline_field(kCmdlineSize, '\0');
+	memcpy(&cmdline_field[0], new_cmdline.c_str(),
+	       std::min(new_cmdline.size(), kCmdlineSize - 1));
+	if (pwrite(fd.get(), cmdline_field.data(), kCmdlineSize, kCmdlineOffset) != (ssize_t)kCmdlineSize ||
+	    pwrite(fd.get(), &os_version, sizeof(os_version), kOsVersionOffset) != (ssize_t)sizeof(os_version)) {
+		LOGERR("Normalize: failed writing %s\n", path.c_str());
+		return;
+	}
+	LOGINFO("Normalized %s: cmdline='%s' os_version=0x%08x\n", path.c_str(), new_cmdline.c_str(),
+	        os_version);
+}
+

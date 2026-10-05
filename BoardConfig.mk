@@ -208,31 +208,24 @@ BOARD_RECOVERY_IMAGE_PREPARE = $(hide) sed -i \
     grep -q '^twrp.drm.direct_scanout=' $(TARGET_RECOVERY_ROOT_OUT)/prop.default || echo 'twrp.drm.direct_scanout=0' >> $(TARGET_RECOVERY_ROOT_OUT)/prop.default
 
 # ---------------------------------------------------------------------------
-# twrpfastboot=1 in the boot image cmdline.
+# Boot image cmdline: do NOT put twrpfastboot=1 in the image we ship.
 #
 # This tree is built with BOARD_USES_RECOVERY_AS_BOOT := true, i.e. the boot
-# image is the recovery ramdisk and is also used for normal boots. AOSP's
+# image is the recovery ramdisk and is also the normal boot image. AOSP's
 # first-stage init hands off to the installed system when the bootloader passes
-# androidboot.force_normal_boot=1, which happens on every normal boot, including
-# "fastboot boot". TWRP patched that code (system/core/init/first_stage_init.cpp,
-# ForceNormalBoot()) so that the cmdline flag twrpfastboot=1 disables the
-# handoff; every pipa recovery image (OrangeFox R11.3/R12.0, twrp-last) carries
-# this flag for exactly that reason.
+# androidboot.force_normal_boot=1 (every normal boot), so the flashed image still
+# boots ColorOS normally, and entering recovery (adb reboot recovery) boots TWRP.
 #
-#   fastboot boot boot.img         -> boots recovery
-#   fastboot flash boot_b boot.img -> the device always starts into recovery
+# TWRP patched first-stage init so the cmdline flag twrpfastboot=1 disables that
+# handoff. That flag is only wanted for the temporary image used with
+# `fastboot boot` - if it were baked into the flashed image the device would
+# always start into recovery and could not boot the ROM anymore. Generate that
+# variant with:
 #
-# Note the second line: while this image is installed in the boot partition the
-# ROM does not boot. Flash back the ROM's boot.img (or another flag-free image)
-# to boot ColorOS again.
+#     python3 device/xiaomi/pipa/tools/make_fbboot_image.py
 #
-# Implementation note: BOARD_KERNEL_CMDLINE does NOT work for this build type.
-# build/make/core/Makefile appends --cmdline from INTERNAL_KERNEL_CMDLINE to
-# INTERNAL_RECOVERYIMAGE_ARGS only inside
+# (Historical note: BOARD_KERNEL_CMDLINE cannot be used here anyway -
+# build/make/core/Makefile only appends --cmdline from INTERNAL_KERNEL_CMDLINE to
+# INTERNAL_RECOVERYIMAGE_ARGS inside
 #   ifneq (truetrue,$(strip $(BUILDING_VENDOR_BOOT_IMAGE))$(strip $(BOARD_USES_RECOVERY_AS_BOOT)))
-# so with BOARD_USES_RECOVERY_AS_BOOT := true that whole block is skipped and the
-# resulting boot image has an empty cmdline (checked with magiskboot unpack).
-# BOARD_RECOVERY_MKBOOTIMG_ARGS is the variable that is passed to mkbootimg for
-# this image, so the flag goes in there (and it has to carry BOARD_MKBOOTIMG_ARGS
-# as well, because defining it disables the default copy the build system makes).
-BOARD_RECOVERY_MKBOOTIMG_ARGS += $(BOARD_MKBOOTIMG_ARGS) --cmdline twrpfastboot=1
+# so with BOARD_USES_RECOVERY_AS_BOOT := true that block is skipped entirely.)
