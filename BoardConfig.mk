@@ -206,3 +206,33 @@ BOARD_RECOVERY_IMAGE_PREPARE = $(hide) sed -i \
     -e 's|^twrp.drm.direct_scanout=.*|twrp.drm.direct_scanout=0|' \
     $(TARGET_RECOVERY_ROOT_OUT)/prop.default; \
     grep -q '^twrp.drm.direct_scanout=' $(TARGET_RECOVERY_ROOT_OUT)/prop.default || echo 'twrp.drm.direct_scanout=0' >> $(TARGET_RECOVERY_ROOT_OUT)/prop.default
+
+# ---------------------------------------------------------------------------
+# twrpfastboot=1 in the boot image cmdline.
+#
+# This tree is built with BOARD_USES_RECOVERY_AS_BOOT := true, i.e. the boot
+# image is the recovery ramdisk and is also used for normal boots. AOSP's
+# first-stage init hands off to the installed system when the bootloader passes
+# androidboot.force_normal_boot=1, which happens on every normal boot, including
+# "fastboot boot". TWRP patched that code (system/core/init/first_stage_init.cpp,
+# ForceNormalBoot()) so that the cmdline flag twrpfastboot=1 disables the
+# handoff; every pipa recovery image (OrangeFox R11.3/R12.0, twrp-last) carries
+# this flag for exactly that reason.
+#
+#   fastboot boot boot.img         -> boots recovery
+#   fastboot flash boot_b boot.img -> the device always starts into recovery
+#
+# Note the second line: while this image is installed in the boot partition the
+# ROM does not boot. Flash back the ROM's boot.img (or another flag-free image)
+# to boot ColorOS again.
+#
+# Implementation note: BOARD_KERNEL_CMDLINE does NOT work for this build type.
+# build/make/core/Makefile appends --cmdline from INTERNAL_KERNEL_CMDLINE to
+# INTERNAL_RECOVERYIMAGE_ARGS only inside
+#   ifneq (truetrue,$(strip $(BUILDING_VENDOR_BOOT_IMAGE))$(strip $(BOARD_USES_RECOVERY_AS_BOOT)))
+# so with BOARD_USES_RECOVERY_AS_BOOT := true that whole block is skipped and the
+# resulting boot image has an empty cmdline (checked with magiskboot unpack).
+# BOARD_RECOVERY_MKBOOTIMG_ARGS is the variable that is passed to mkbootimg for
+# this image, so the flag goes in there (and it has to carry BOARD_MKBOOTIMG_ARGS
+# as well, because defining it disables the default copy the build system makes).
+BOARD_RECOVERY_MKBOOTIMG_ARGS += $(BOARD_MKBOOTIMG_ARGS) --cmdline twrpfastboot=1

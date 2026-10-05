@@ -29,12 +29,24 @@ fonts-dejavu-core` (otherwise `RecoveryImageGenerator` aborts with
 
 ### Flashing / booting notes (pipa, ColorOS 17 port)
 
-* This device has **no `init_boot`**; the ROM backports the boot-header/vendor_boot
-  scheme. Normal boot uses the ROM ramdisk, the **recovery ramdisk lives in `boot`**,
-  and the bootloader only uses it when the boot reason is `recovery`.
-* So: `adb reboot fastboot` → `fastboot flash boot_b boot.img` → `fastboot reboot`
-  boots the **system**; use **`adb reboot recovery`** to get into TWRP.
-* `fastboot reboot` from fastbootd boots normally (system), which is expected.
+* This tree is built with `BOARD_USES_RECOVERY_AS_BOOT := true`: the boot image *is*
+  the recovery ramdisk and is also the normal boot image.
+* The build adds **`twrpfastboot=1` to the boot header cmdline**
+  (`BOARD_KERNEL_CMDLINE += twrpfastboot=1`, see `BoardConfig.mk`), exactly like every
+  other pipa recovery image (OrangeFox R11.3/R12.0, twrp-last). TWRP patched
+  `system/core/init/first_stage_init.cpp` so that this flag **disables** the
+  `androidboot.force_normal_boot` hand-off to the installed system — which is what a
+  normal boot (and `fastboot boot`) would otherwise do. Therefore:
+
+  ```bash
+  fastboot boot boot.img            # boots TWRP directly (temporary, nothing flashed)
+  fastboot flash boot_b boot.img    # TWRP installed; device then always starts into recovery
+  ```
+
+  ⚠️ While this image is installed in the boot partition the ROM does **not** boot
+  (that is the trade-off of the flag). Flash back the ROM's `boot.img` (or any
+  flag-free boot image) to boot ColorOS again — that is also how the previous
+  OrangeFox/twrp-last images behave.
 
 ---
 
@@ -46,13 +58,15 @@ fonts-dejavu-core` (otherwise `RecoveryImageGenerator` aborts with
 | `BoardConfig.mk` | `TW_INPUT_BLACKLIST := hbtp_vm` **without quotes** | same reason; also a no-op on pipa (that input device does not exist here) |
 | `BoardConfig.mk` | new `BOARD_RECOVERY_IMAGE_PREPARE` hook that rewrites `$(TARGET_RECOVERY_ROOT_OUT)/prop.default` (see “property hook” below) | keymaster version match + DRM performance |
 | `BoardConfig.mk` | `TW_INCLUDE_RESETPROP` / `TW_INCLUDE_LIBRESETPROP` disabled | the tree’s `external/magisk-prebuilt/Android.mk` is a 0-byte file and A16 Soong treats that as a fatal error |
+| `BoardConfig.mk` | `BOARD_KERNEL_CMDLINE += twrpfastboot=1` | makes `fastboot boot` enter TWRP instead of handing off to the ROM (see “Flashing / booting notes”); all pipa recovery images do this |
+| all text files under this tree | **CRLF → LF** (`recovery.fstab` had 68 CRLF lines) | A16’s `libfstab` splits on `\n` and tokenises on ` \t`; the leftover `\r` makes empty lines a single `"\r"` token → `expected 5 fields, got 1` → `abort()` in recovery. A12-based recoveries were tolerant, which is why the old images worked |
+| `recovery/root/system/etc/recovery.fstab` | `/boot` and `/dtbo` got the **`slotselect`** flag; removed the bogus `/exaid` entry and the `mi_ext` entry; added `/vendor_boot` and `/vbmeta` | the device has **no plain `by-name/boot`** (only `boot_a`/`boot_b`), so TWRP’s *Install Recovery Ramdisk* aborted at “Backing up Boot…” with `Error opening: '' (No such file or directory)`. The same applies to `dtbo`. `exaid` does not exist on pipa and this ROM’s super has no `mi_ext` logical partition (TWRP logged `unable to update logical partition: /mi_ext`). Checked every entry against the ROM’s own `vendor/etc/fstab.qcom` and the device’s `by-name` table |
 | `device.mk` | dropped `TWRP_REQUIRED_MODULES += miui_prebuilt` | same magisk-prebuilt problem; the MIUI repack feature is not needed |
 | `AndroidProducts.mk` | added 3-segment `.mk` entries (`twrp_pipa-bp2a-eng`, `-user`, `-userdebug`) | A16 `lunch` requires `<product>-<release>-<variant>` |
 | `recovery/root/init.recovery.qcom.rc` | added `on early-init / write /sys/fs/selinux/enforce 0` | with SELinux enforcing the AIDL boot HAL (`hal_bootctl_default`) cannot `stat /dev/block/bootdevice/by-name/misc`, never registers, and TWRP blocks forever at `Processing /etc/recovery.fstab`; HIDL keymaster/gatekeeper are also affected |
 | `recovery/root/init.recovery.qcom.rc` | removed `start boot-hal-1-1` | that HIDL boot stub has no passthrough implementation on this device, exits 1 every 5 s; after 4 crashes init does `LOG(FATAL) "critical process … exited 4 times"` → sysrq crash → the device panics/reboots ~22 s after boot |
 | `recovery/root/system/etc/vintf/manifest/boot-service.qti.xml` (**new**) | declares `android.hardware.boot.IBootControl/default` with `type="framework"` | the recovery ramdisk shipped inside the ROM’s `vendor_boot` puts a **device-typed** fragment with the same name into `/system/etc/vintf/manifest/`, which aborts `hwservicemanager`’s *framework* manifest parse; it then sets `hwservicemanager.disabled=true` and exits, so all HIDL clients (keymaster!) fail to register. Our ramdisk wins the merge, and a framework-typed fragment keeps both parsers happy (the recovery manifest reader force-casts fragments to DEVICE anyway) |
 | `recovery/root/vendor/etc/vintf/manifest/android.hardware.health@2.1.xml` (**new**) | HIDL `android.hardware.health@2.1` device fragment | `android.hardware.health@2.1-service` could not register (`must be in VINTF manifest`) and crash-looped every 5 s |
-| all text files under this tree | **CRLF → LF** (`recovery.fstab` had 68 CRLF lines) | A16’s `libfstab` splits on `\n` and tokenises on ` \t`; the leftover `\r` makes empty lines a single `"\r"` token → `expected 5 fields, got 1` → `abort()` in recovery. A12-based recoveries were tolerant, which is why the old images worked |
 | `prebuilt/kernel` | replaced with our port’s kernel (`4.19.325-cip…`, 38,971,416 B) | must match the ROM’s kernel (SukiSU-Ultra + SUSFS built in) |
 | `recovery/root/vendor/lib64/libqtikeymaster4.so`, `libkeymasterdeviceutils.so`, `recovery/root/vendor/bin/qseecomd` | replaced with the copies from the port’s real `vendor` | recovery must use the same QTI keymaster implementation as the ROM, otherwise the TEE refuses the key blobs |
 | `recovery/root/.../android.hardware.keymaster@4.1-*` | removed (binary + VINTF + `init.recovery.qcom.rc` service) | the device has no 4.1 HAL |
