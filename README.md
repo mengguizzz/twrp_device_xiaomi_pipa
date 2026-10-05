@@ -61,6 +61,35 @@ fonts-dejavu-core` (otherwise `RecoveryImageGenerator` aborts with
 | `BoardConfig.mk` | `BOARD_KERNEL_CMDLINE += twrpfastboot=1` | makes `fastboot boot` enter TWRP instead of handing off to the ROM (see “Flashing / booting notes”); all pipa recovery images do this |
 | all text files under this tree | **CRLF → LF** (`recovery.fstab` had 68 CRLF lines) | A16’s `libfstab` splits on `\n` and tokenises on ` \t`; the leftover `\r` makes empty lines a single `"\r"` token → `expected 5 fields, got 1` → `abort()` in recovery. A12-based recoveries were tolerant, which is why the old images worked |
 | `recovery/root/system/etc/recovery.fstab` | `/boot` and `/dtbo` got the **`slotselect`** flag; removed the bogus `/exaid` entry and the `mi_ext` entry; added `/vendor_boot` and `/vbmeta` | the device has **no plain `by-name/boot`** (only `boot_a`/`boot_b`), so TWRP’s *Install Recovery Ramdisk* aborted at “Backing up Boot…” with `Error opening: '' (No such file or directory)`. The same applies to `dtbo`. `exaid` does not exist on pipa and this ROM’s super has no `mi_ext` logical partition (TWRP logged `unable to update logical partition: /mi_ext`). Checked every entry against the ROM’s own `vendor/etc/fstab.qcom` and the device’s `by-name` table |
+
+### TWRP source patch: `/etc/twrp.flags` parser (`patches/ofox_patch_twrpflags.py`)
+
+*Fix for “Install Recovery Ramdisk” still failing after the fstab fix.*
+
+`/etc/twrp.flags` uses the TWRP v1 layout
+
+```
+<mount point>  <fstype>  <device>  [<device2>]  flags=<...>
+```
+
+but `parse_twrp_flags()` in `bootable/recovery/partitionmanager.cpp` read the
+**fstype** (`emmc`/`ext4`) as `Primary_Block_Device`, and
+`Override_Block_Devices_From_Flags()` then overwrote the real device parsed from
+`/etc/recovery.fstab` with it. For `/boot` and `/dtbo` — whose nodes only exist as
+`boot_b`/`dtbo_b`, there is no unsuffixed `by-name/boot` — that left
+`Actual_Block_Device` empty, so the backup before repacking aborted:
+
+```
+Backing up Boot...
+Error opening: '' (No such file or directory)
+```
+
+(Other partitions survived only because their unsuffixed `by-name/<name>` node
+exists, so the alternate path fallback still worked.)
+
+The patch makes the parser read the device from `tokens[2]`, the filesystem from
+`tokens[1]` and look for an alternate device from `tokens[3]` on. Apply it with
+`patches/ofox_patch_twrpflags.py` after syncing `twrp-16.0`.
 | `device.mk` | dropped `TWRP_REQUIRED_MODULES += miui_prebuilt` | same magisk-prebuilt problem; the MIUI repack feature is not needed |
 | `AndroidProducts.mk` | added 3-segment `.mk` entries (`twrp_pipa-bp2a-eng`, `-user`, `-userdebug`) | A16 `lunch` requires `<product>-<release>-<variant>` |
 | `recovery/root/init.recovery.qcom.rc` | added `on early-init / write /sys/fs/selinux/enforce 0` | with SELinux enforcing the AIDL boot HAL (`hal_bootctl_default`) cannot `stat /dev/block/bootdevice/by-name/misc`, never registers, and TWRP blocks forever at `Processing /etc/recovery.fstab`; HIDL keymaster/gatekeeper are also affected |
