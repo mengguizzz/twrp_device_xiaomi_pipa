@@ -7,7 +7,7 @@ TWRP **3.7.1_16** device tree for **Xiaomi Pad 6** (`pipa`, SM8250), built on th
 
 ```bash
 # 1) 同步 twrp-16.0 manifest（TWRP 3.7.1_16 / AOSP 16）
-repo init -u https://github.com/TeamWin/manifest -b twrp-16.0
+repo init -u https://github.com/ymdzq/manifest_twrp.git -b twrp-16.0
 repo sync -j8
 
 # 2) 把本仓库放到 device/xiaomi/pipa
