@@ -6,16 +6,21 @@
 2. try `recovery_available: true` on the android.system.keystore2 aidl_interface.
 """
 import os
+from pathlib import Path
+import sys
 
-T = '/root/twrp16/'
+root = Path(
+    sys.argv[1]
+    if len(sys.argv) > 1
+    else os.environ.get("TWRP_BUILD_DIR", os.getcwd())
+).resolve()
 
 # ---- 1) resetprop_headers ------------------------------------------------
-hdr_bp = T + 'external/magisk-prebuilt/Android.bp'
-if os.path.exists(hdr_bp):
+hdr_bp = root / 'external/magisk-prebuilt/Android.bp'
+if hdr_bp.exists():
     print('Android.bp already exists, not touching')
 else:
-    with open(hdr_bp, 'w') as f:
-        f.write('''// Added by the pipa TWRP-16 port.
+    hdr_bp.write_text('''// Added by the pipa TWRP-16 port.
 //
 // bootable/recovery/Android.bp (TWRP) lists "resetprop_headers" in header_libs
 // when TW_INCLUDE_LIBRESETPROP is on, but the TeamWin android-12.1 copy of
@@ -34,16 +39,18 @@ cc_library_headers {
     print('created', hdr_bp)
 
 # ---- 2) keystore2 aidl recovery variant ---------------------------------
-aidl = T + 'system/hardware/interfaces/keystore2/aidl/Android.bp'
-s = open(aidl).read()
+aidl = root / 'system/hardware/interfaces/keystore2/aidl/Android.bp'
+if not aidl.exists():
+    sys.exit(f"missing file: {aidl}")
+s = aidl.read_text()
 key = 'name: "android.system.keystore2",'
 i = s.find(key)
 if i < 0:
-    print('keystore2 aidl_interface not found')
+    sys.exit('keystore2 aidl_interface not found')
 elif 'recovery_available' in s[i:i + 500]:
     print('already patched')
 else:
     end = s.index('\n', i) + 1
     s = s[:end] + '    recovery_available: true,\n' + s[end:]
-    open(aidl, 'w').write(s)
+    aidl.write_text(s)
     print('patched', aidl)

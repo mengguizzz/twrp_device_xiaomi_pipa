@@ -19,6 +19,8 @@ by-name/boot) Actual_Block_Device ended up empty and
 This patch reads the device from tokens[2] instead.
 """
 import sys
+import os
+from pathlib import Path
 
 OLD = """            if (!tokens.empty()) {
                 lf.File_System = tokens[0];
@@ -60,7 +62,8 @@ NEW = """            if (!tokens.empty()) {
 """
 
 path = sys.argv[1] if len(sys.argv) > 1 else \
-    "/root/twrp16/bootable/recovery/partition.cpp"
+    str(Path(os.environ.get("TWRP_BUILD_DIR", os.getcwd())) /
+        "bootable/recovery/partition.cpp")
 
 src = open(path, encoding="utf-8").read()
 if NEW in src:

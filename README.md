@@ -12,13 +12,11 @@ repo sync -j8
 
 # 2) 把本仓库放到 device/xiaomi/pipa
 
-# 3) 应用 patches/ 里的源码补丁（少一个都编不过或功能不对）
-python3 patches/ofox_patcher.py        # external/scrypt、external/freetype、system/keymaster 加 recovery_available
-python3 patches/ofox_patch3.py         # android.system.keystore2 的 aidl_interface 加 recovery_available
-cp patches/magisk-prebuilt_Android.bp external/magisk-prebuilt/Android.bp   # 原文件是 0 字节，A16 Soong 当致命错误
+# 3) 应用全部源码补丁（可从源码树根目录运行，也可传入源码树路径）
+bash device/xiaomi/pipa/patches/apply_all.sh "$PWD"
 
 # 4) 主机依赖（否则 RecoveryImageGenerator 报 "Fontconfig head is null"）
-sudo apt-get install -y fontconfig fonts-dejavu-core
+bash device/xiaomi/pipa/.github/scripts/install-deps.sh
 
 # 5) 编译
 source build/envsetup.sh
@@ -33,3 +31,13 @@ python3 device/xiaomi/pipa/tools/make_fbboot_image.py
 
 `tools/patch_boot_header.py` 用来修正其它工具重打包出来的镜像的 boot header
 （`os_version` / `os_patch_level`），用法见脚本头部注释。
+
+## GitHub Actions
+
+仓库包含 `.github/workflows/build-release.yml`。手动运行会构建并上传 workflow
+artifact；推送 `twrp-*` 标签或在手动运行中启用发布，会把 boot 镜像、fbboot
+镜像、构建信息和 SHA-256 一并发布到 GitHub Release。
+
+CI 使用 `patches/apply_all.sh` 以便携方式应用所有源码补丁，并把源码和输出放在
+GitHub Hosted Runner 的 `/mnt` 大容量临时盘上。详细说明见
+`.github/workflows/README.md`。

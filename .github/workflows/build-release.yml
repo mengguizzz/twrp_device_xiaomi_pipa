@@ -1,0 +1,178 @@
+name: Build TWRP pipa
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag used when publish_release is enabled
+        required: false
+        type: string
+      build_label:
+        description: Optional artifact filename prefix
+        required: false
+        type: string
+      publish_release:
+        description: Publish the generated images as a GitHub Release
+        required: true
+        default: false
+        type: boolean
+  push:
+    tags:
+      - "twrp-*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: twrp-pipa-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TWRP_BUILD_DIR: ${{ github.workspace }}/../twrp16
+  TWRP_RELEASE_DIR: ${{ github.workspace }}/../release
+  CCACHE_MAX_SIZE: 2G
+  BUILD_JOBS: 4
+  MIN_FREE_GB: 45
+  BUILD_LABEL: ${{ inputs.build_label }}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Remove unused runner toolchains
+        uses: rokibhasansagar/slimhub_actions@main
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 5 --retry-delay 3 \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/scripts/install-deps.sh" \
+            -o "$RUNNER_TEMP/install-deps.sh"
+          bash "$RUNNER_TEMP/install-deps.sh"
+
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: "3072"
+
+      - name: Check out device tree
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          max-size: "2G"
+          create-symlink: true
+
+      - name: Set up zram
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo modprobe zram || true
+          sudo sed -i 's/^#PERCENT=.*/PERCENT=90/' /etc/default/zramswap
+          sudo sed -i 's/^#PRIORITY=.*/PRIORITY=1000/' /etc/default/zramswap
+          sudo systemctl restart zramswap
+          zramctl
+
+      - name: Show build storage
+        run: |
+          df -h /
+          df -h "$RUNNER_WORKSPACE"
+
+      - name: Build recovery images
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${BUILD_LABEL:-}" ]]; then
+            export BUILD_LABEL="twrp_pipa_A16_${GITHUB_RUN_NUMBER}_${GITHUB_SHA:0:8}"
+          fi
+          bash .github/scripts/ci-build.sh
+
+      - name: Write release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "# Xiaomi Pad 6 (pipa) TWRP"
+            echo
+            echo "Built from device-tree commit \`$GITHUB_SHA\`."
+            echo
+            echo "## Files"
+            echo
+            echo "- \`*_boot.img\`: flash this image directly."
+            echo "- \`*_fbboot.img\`: optional temporary \`fastboot boot\` image. Never flash this variant."
+            echo
+            echo "## Build information"
+            echo
+            echo '```'
+            cat "$TWRP_RELEASE_DIR/BUILD_INFO.txt"
+            echo '```'
+            echo
+            echo "## SHA-256"
+            echo
+            echo '```'
+            cat "$TWRP_RELEASE_DIR/SHA256SUMS.txt"
+            echo '```'
+            echo
+            echo "The test recovery is based on TWRP 16 and preserves the Pixel/A17-style keymaster property overrides used by this port."
+          } > "$TWRP_RELEASE_DIR/release-notes.md"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: twrp-pipa-${{ github.run_number }}
+          path: ${{ github.workspace }}/../release/*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: build
+    if: >-
+      startsWith(github.ref, 'refs/tags/twrp-') ||
+      (github.event_name == 'workflow_dispatch' && inputs.publish_release)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: twrp-pipa-${{ github.run_number }}
+          path: release
+
+      - name: Resolve release tag
+        id: release
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            tag="$INPUT_TAG"
+          else
+            tag="$GITHUB_REF_NAME"
+          fi
+          if [[ -z "$tag" ]]; then
+            echo "release_tag is required when publish_release is enabled" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: TWRP for Xiaomi Pad 6 - ${{ steps.release.outputs.tag }}
+          body_path: release/release-notes.md
+          files: release/*
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true

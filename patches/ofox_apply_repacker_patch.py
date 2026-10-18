@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Insert Normalize_Repacked_Image() into TWRP's twrpRepacker.cpp."""
 import sys
+import os
+from pathlib import Path
 
-SRC = "/root/twrp16/bootable/recovery/twrpRepacker.cpp"
-HELPER_FILE = "/tmp/repacker_normalize.cpp.txt"
+HELPER_FILE = Path(__file__).resolve().parent / "repacker_normalize.cpp.txt"
 
 OLD_INCLUDES = "#include <format>\n#include <string>\n#include <sys/mount.h>\n#include <sys/wait.h>\n"
 NEW_INCLUDES = ("#include <fcntl.h>\n#include <format>\n#include <string>\n#include <sys/mount.h>\n"
@@ -22,12 +23,17 @@ CALL_NEW = ('\tDataManager::SetProgress(.75);\n\tstd::string file = "new-boot.im
 
 
 def main():
-    src_path = sys.argv[1] if len(sys.argv) > 1 else SRC
-    src = open(src_path, encoding="utf-8").read()
+    root = Path(
+        sys.argv[1]
+        if len(sys.argv) > 1
+        else os.environ.get("TWRP_BUILD_DIR", os.getcwd())
+    ).resolve()
+    src_path = root / "bootable/recovery/twrpRepacker.cpp"
+    src = src_path.read_text(encoding="utf-8")
     if "Normalize_Repacked_Image" in src:
         print("already patched")
         return
-    helper = open(HELPER_FILE, encoding="utf-8").read()
+    helper = HELPER_FILE.read_text(encoding="utf-8")
     if OLD_INCLUDES not in src:
         sys.exit("include block not found")
     if ANCHOR not in src:
@@ -37,7 +43,7 @@ def main():
     src = src.replace(OLD_INCLUDES, NEW_INCLUDES, 1)
     src = src.replace(ANCHOR, helper + ANCHOR, 1)
     src = src.replace(CALL_OLD, CALL_NEW)
-    open(src_path, "w", encoding="utf-8").write(src)
+    src_path.write_text(src, encoding="utf-8")
     print("patched %s, call sites: %d" % (src_path, src.count("Normalize_Repacked_Image(path + file)")))
 
 

@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Add recovery_available to AOSP modules TWRP's recovery still links against."""
 import os
-import subprocess
+from pathlib import Path
 import sys
 
-T = '/root/twrp16/'
+root = Path(
+    sys.argv[1]
+    if len(sys.argv) > 1
+    else os.environ.get("TWRP_BUILD_DIR", os.getcwd())
+).resolve()
 TARGETS = [
     ('external/scrypt/Android.bp', 'libscrypt_static'),
     ('external/freetype/Android.bp', 'libft2'),
@@ -12,21 +16,19 @@ TARGETS = [
 ]
 
 for path, mod in TARGETS:
-    p = T + path
-    if not os.path.exists(p):
-        print('missing file:', p)
-        continue
-    s = open(p).read()
+    p = root / path
+    if not p.exists():
+        sys.exit(f"missing file: {p}")
+    s = p.read_text()
     key = 'name: "%s",' % mod
     i = s.find(key)
     if i < 0:
-        print('module not found:', mod, 'in', path)
-        continue
+        sys.exit(f"module not found: {mod} in {path}")
     seg = s[max(0, i - 200):i + 800]
     if 'recovery_available' in seg:
         print('already patched:', mod)
         continue
     end = s.index('\n', i) + 1
     s = s[:end] + '    recovery_available: true,\n' + s[end:]
-    open(p, 'w').write(s)
+    p.write_text(s)
     print('patched', mod, 'in', path)
