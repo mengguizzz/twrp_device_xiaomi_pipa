@@ -41,9 +41,6 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Remove unused runner toolchains
-        uses: rokibhasansagar/slimhub_actions@main
-
       - name: Install build dependencies
         shell: bash
         run: |

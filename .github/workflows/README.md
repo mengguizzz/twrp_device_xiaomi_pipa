@@ -3,7 +3,6 @@
 The workflow builds on GitHub-hosted `ubuntu-24.04` runners. It follows the
 working Hosted Runner setup used by the Pipa OrangeFox workflow:
 
-- remove unused preinstalled toolchains;
 - install Android build dependencies;
 - use `easimon/maximize-build-space` to move the work area onto the large
   temporary volume;
