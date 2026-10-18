@@ -10,3 +10,7 @@ ro.charger.enable_suspend=1
 
 # Reset allocatable space
 ro.dynamic.full_size=9126805504
+
+# TWRP's MTP server reads this private property for the DeviceInfo model.
+# Without it Windows shows the portable device as "unknown model".
+ro.color597.product_name=Xiaomi Pad 6
