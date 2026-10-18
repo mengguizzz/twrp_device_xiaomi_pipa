@@ -28,8 +28,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  TWRP_BUILD_DIR: ${{ github.workspace }}/../twrp16
-  TWRP_RELEASE_DIR: ${{ github.workspace }}/../release
+  TWRP_BUILD_DIR: ${{ github.workspace }}/.ci/twrp16
+  TWRP_RELEASE_DIR: ${{ github.workspace }}/.ci/release
   CCACHE_MAX_SIZE: 2G
   BUILD_JOBS: 4
   MIN_FREE_GB: 60
@@ -53,7 +53,6 @@ jobs:
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
-          build-mount-path: ${{ github.workspace }}/..
           root-reserve-mb: "4096"
           temp-reserve-mb: "512"
           swap-size-mb: "8192"
@@ -134,7 +133,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: twrp-pipa-${{ github.run_number }}
-          path: ${{ github.workspace }}/../release/*
+          path: ${{ github.workspace }}/.ci/release/*
           if-no-files-found: error
           retention-days: 7
 

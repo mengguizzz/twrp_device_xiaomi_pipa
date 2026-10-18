@@ -54,7 +54,11 @@ done
 
 rm -rf "$DEVICE_DIR"
 mkdir -p "$(dirname "$DEVICE_DIR")"
-rsync -a --delete --exclude=.git "$SOURCE_REPO/" "$DEVICE_DIR/"
+rsync -a --delete \
+    --exclude=.git \
+    --exclude=.ci \
+    --exclude=.ccache \
+    "$SOURCE_REPO/" "$DEVICE_DIR/"
 
 bash "$DEVICE_DIR/patches/ofox_fix_crlf.sh" "$DEVICE_DIR"
 bash "$DEVICE_DIR/patches/apply_all.sh" "$BUILD_DIR"
