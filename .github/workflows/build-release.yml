@@ -70,11 +70,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo modprobe zram || true
-          sudo sed -i 's/^#PERCENT=.*/PERCENT=90/' /etc/default/zramswap
-          sudo sed -i 's/^#PRIORITY=.*/PRIORITY=1000/' /etc/default/zramswap
-          sudo systemctl restart zramswap
-          zramctl
+          if sudo modprobe zram; then
+            sudo sed -i 's/^#PERCENT=.*/PERCENT=90/' /etc/default/zramswap
+            sudo sed -i 's/^#PRIORITY=.*/PRIORITY=1000/' /etc/default/zramswap
+            sudo systemctl restart zramswap || true
+            zramctl
+          else
+            echo "zram is unavailable on this runner kernel; continuing without it"
+          fi
 
       - name: Show build storage
         run: |
