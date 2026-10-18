@@ -70,6 +70,9 @@ if NEW in src:
     print("already patched")
     sys.exit(0)
 if OLD not in src:
+    if "block_device_index" in src and "mount_point_index" in src:
+        print("upstream parser already uses the correct token indices")
+        sys.exit(0)
     sys.exit("pattern not found - check partition.cpp")
 open(path, "w", encoding="utf-8").write(src.replace(OLD, NEW, 1))
 print("patched %s" % path)
