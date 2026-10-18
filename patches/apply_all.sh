@@ -13,6 +13,10 @@ fi
 python3 "$PATCH_DIR/ofox_patcher.py" "$ROOT"
 cp -f "$PATCH_DIR/magisk_prebuilt_Android.bp" \
     "$ROOT/external/magisk-prebuilt/Android.bp"
+if [ -f "$ROOT/external/magisk-prebuilt/Android.mk" ]; then
+    mv -f "$ROOT/external/magisk-prebuilt/Android.mk" \
+        "$ROOT/external/magisk-prebuilt/Android.mk.disabled"
+fi
 python3 "$PATCH_DIR/ofox_patch3.py" "$ROOT"
 python3 "$PATCH_DIR/ofox_patch_twrpflags.py" \
     "$ROOT/bootable/recovery/partition.cpp"

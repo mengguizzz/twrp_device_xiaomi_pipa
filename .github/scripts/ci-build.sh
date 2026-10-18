@@ -87,7 +87,15 @@ sed -i 's/return sandboxConfig\.working/return false/g' \
 
 set +u
 source build/envsetup.sh
-lunch twrp_pipa-bp2a-eng
+if ! lunch twrp_pipa-bp2a-eng; then
+    echo "lunch failed; collecting product diagnostics" >&2
+    ls -l "$DEVICE_DIR/AndroidProducts.mk" "$DEVICE_DIR/twrp_pipa.mk" >&2
+    grep -n "COMMON_LUNCH_CHOICES\\|PRODUCT_MAKEFILES" \
+        "$DEVICE_DIR/AndroidProducts.mk" >&2 || true
+    TARGET_PRODUCT=twrp_pipa TARGET_RELEASE=bp2a TARGET_BUILD_VARIANT=eng \
+        _get_build_var_cached TARGET_DEVICE || true
+    exit 1
+fi
 set -u
 
 mka bootimage -j"$BUILD_JOBS"

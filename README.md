@@ -14,6 +14,7 @@ repo sync -j8
 
 # 3) 应用全部源码补丁（可从源码树根目录运行，也可传入源码树路径）
 bash device/xiaomi/pipa/patches/apply_all.sh "$PWD"
+# 包括 magisk-prebuilt 的 Android.bp 替代，并禁用会被 A16 Soong 拒绝的 Android.mk
 
 # 4) 主机依赖（否则 RecoveryImageGenerator 报 "Fontconfig head is null"）
 bash device/xiaomi/pipa/.github/scripts/install-deps.sh
