@@ -31,7 +31,7 @@ env:
   TWRP_BUILD_DIR: ${{ github.workspace }}/.ci/twrp16
   TWRP_RELEASE_DIR: ${{ github.workspace }}/.ci/release
   CCACHE_MAX_SIZE: 2G
-  BUILD_JOBS: 4
+  BUILD_JOBS: 2
   MIN_FREE_GB: 60
   BUILD_LABEL: ${{ inputs.build_label }}
 
@@ -53,9 +53,9 @@ jobs:
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
-          root-reserve-mb: "4096"
-          temp-reserve-mb: "512"
-          swap-size-mb: "4096"
+          root-reserve-mb: "3072"
+          temp-reserve-mb: "256"
+          swap-size-mb: "6144"
           remove-dotnet: "true"
           remove-android: "true"
           remove-haskell: "true"

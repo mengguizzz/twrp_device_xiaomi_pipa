@@ -98,7 +98,7 @@ if ! lunch twrp_pipa-bp2a-eng; then
 fi
 set -u
 
-mka bootimage -j"$BUILD_JOBS"
+nice -n 5 mka bootimage -j"$BUILD_JOBS"
 
 BOOTIMAGE="$OUT_DIR/boot.img"
 if [ ! -f "$BOOTIMAGE" ]; then
