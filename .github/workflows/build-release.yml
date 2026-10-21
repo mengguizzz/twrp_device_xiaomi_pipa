@@ -24,7 +24,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: twrp-pipa-${{ github.ref }}
+  group: twrp-pipa-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 env:
