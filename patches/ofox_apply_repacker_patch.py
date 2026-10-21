@@ -2,24 +2,36 @@
 """Insert Normalize_Repacked_Image() into TWRP's twrpRepacker.cpp."""
 import sys
 import os
+import re
 from pathlib import Path
 
 HELPER_FILE = Path(__file__).resolve().parent / "repacker_normalize.cpp.txt"
 
 OLD_INCLUDES = "#include <format>\n#include <string>\n#include <sys/mount.h>\n#include <sys/wait.h>\n"
-NEW_INCLUDES = ("#include <fcntl.h>\n#include <format>\n#include <string>\n#include <sys/mount.h>\n"
-                "#include <sys/wait.h>\n#include <unistd.h>\n\n"
-                "#include <android-base/properties.h>\n")
+NEW_INCLUDES = (
+    "#include <fcntl.h>\n"
+    "#include <algorithm>\n"
+    "#include <cstdint>\n"
+    "#include <cstdlib>\n"
+    "#include <cstring>\n"
+    "#include <format>\n"
+    "#include <string>\n"
+    "#include <sys/mount.h>\n"
+    "#include <sys/wait.h>\n"
+    "#include <unistd.h>\n\n"
+    "#include <android-base/properties.h>\n"
+    "#include <android-base/unique_fd.h>\n"
+)
 
-ANCHOR = "bool twrpRepacker::Prepare_Empty_Folder"
+ANCHORS = (
+    "bool twrpRepacker::PrepareEmptyFolder",
+    "bool twrpRepacker::Prepare_Empty_Folder",
+)
 
-CALL_OLD = ('\tDataManager::SetProgress(.75);\n\tstd::string file = "new-boot.img";\n'
-            '\tDataManager::SetValue("tw_flash_partition", dest_partition + ";");\n'
-            "\tif (!PartitionManager.Flash_Image(path, file)) {")
-CALL_NEW = ('\tDataManager::SetProgress(.75);\n\tstd::string file = "new-boot.img";\n'
-            "\tNormalize_Repacked_Image(path + file);\n"
-            '\tDataManager::SetValue("tw_flash_partition", dest_partition + ";");\n'
-            "\tif (!PartitionManager.Flash_Image(path, file)) {")
+CALL_RE = re.compile(
+    r'(?P<indent>\t*)std::string file = "new-boot.img";\n'
+    r'(?P=indent)DataManager::SetValue\("tw_flash_partition", dest_partition \+ ";"\);'
+)
 
 
 def main():
@@ -36,13 +48,22 @@ def main():
     helper = HELPER_FILE.read_text(encoding="utf-8")
     if OLD_INCLUDES not in src:
         sys.exit("include block not found")
-    if ANCHOR not in src:
+    anchor = next((candidate for candidate in ANCHORS if candidate in src), None)
+    if anchor is None:
         sys.exit("anchor not found")
-    if src.count(CALL_OLD) < 1:
+    if CALL_RE.search(src) is None:
         sys.exit("call site not found")
     src = src.replace(OLD_INCLUDES, NEW_INCLUDES, 1)
-    src = src.replace(ANCHOR, helper + ANCHOR, 1)
-    src = src.replace(CALL_OLD, CALL_NEW)
+    src = src.replace(anchor, helper + anchor, 1)
+    src = CALL_RE.sub(
+        lambda match: (
+            f'{match.group("indent")}std::string file = "new-boot.img";\n'
+            f'{match.group("indent")}Normalize_Repacked_Image(path + file);\n'
+            f'{match.group("indent")}DataManager::SetValue("tw_flash_partition", '
+            'dest_partition + ";");'
+        ),
+        src,
+    )
     src_path.write_text(src, encoding="utf-8")
     print("patched %s, call sites: %d" % (src_path, src.count("Normalize_Repacked_Image(path + file)")))
 
