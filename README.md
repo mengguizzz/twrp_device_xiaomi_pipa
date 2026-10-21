@@ -44,4 +44,8 @@ GitHub Hosted Runner 的 `/mnt` 大容量临时盘上。详细说明见
 `.github/workflows/README.md`。
 
 CI 同时使用 OrangeFox 的固定版本 `remove-minimal.xml` 作为 repo local manifest，
-移除非 recovery 所需的完整 AOSP 项目，避免 Hosted Runner 在 Soong 后段耗尽磁盘。
+先按当前 TWRP manifest 过滤掉已不存在的条目，再移除非 recovery 所需的完整
+AOSP 项目，避免 Hosted Runner 在 Soong 后段耗尽磁盘。
+
+`patches/ofox_patch_volume_keys.py` 把硬件音量键映射为 TWRP 图形界面的列表滚动，
+解决 A16 TWRP GUI 没有默认处理 `KEY_VOLUMEUP` / `KEY_VOLUMEDOWN` 的问题。

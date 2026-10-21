@@ -41,10 +41,15 @@ if [ ! -d "$BUILD_DIR/.repo" ]; then
         -b "$MANIFEST_BRANCH"
 fi
 
+repo manifest -o "$BUILD_DIR/active-manifest.xml"
 mkdir -p "$BUILD_DIR/.repo/local_manifests"
 curl --fail --location --retry 5 --retry-delay 3 \
     "$MINIMAL_MANIFEST_URL" \
-    -o "$BUILD_DIR/.repo/local_manifests/zz-recovery-minimal.xml"
+    -o "$BUILD_DIR/remove-minimal.xml"
+python3 "$SOURCE_REPO/.github/scripts/filter-minimal-manifest.py" \
+    "$BUILD_DIR/active-manifest.xml" \
+    "$BUILD_DIR/remove-minimal.xml" \
+    "$BUILD_DIR/.repo/local_manifests/zz-recovery-minimal.xml"
 
 for attempt in 1 2 3; do
     if repo sync -c -j"$BUILD_JOBS" --no-clone-bundle --no-tags --fail-fast; then

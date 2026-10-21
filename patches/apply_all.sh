@@ -21,3 +21,4 @@ python3 "$PATCH_DIR/ofox_patch3.py" "$ROOT"
 python3 "$PATCH_DIR/ofox_patch_twrpflags.py" \
     "$ROOT/bootable/recovery/partition.cpp"
 python3 "$PATCH_DIR/ofox_apply_repacker_patch.py" "$ROOT"
+python3 "$PATCH_DIR/ofox_patch_volume_keys.py" "$ROOT"
