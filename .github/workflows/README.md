@@ -6,9 +6,8 @@ working Hosted Runner setup used by the Pipa OrangeFox workflow:
 - install Android build dependencies;
 - use `easimon/maximize-build-space` to move the work area onto the large
   temporary volume;
-- apply OrangeFox's pinned recovery-only `remove-minimal.xml` local manifest,
-  filtered against the active TWRP manifest so it removes several hundred AOSP
-  projects that are not used by recovery without failing on stale entries;
+- use the recovery-only `remove-minimal.xml` already included by the
+  `ymdzq/manifest_twrp` manifest, which leaves roughly 387 projects;
 - enable zram to reduce Android build memory pressure.
 
 ## Triggers
