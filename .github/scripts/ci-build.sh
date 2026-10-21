@@ -9,6 +9,7 @@ BUILD_JOBS=${BUILD_JOBS:-$(nproc)}
 MIN_FREE_GB=${MIN_FREE_GB:-45}
 MANIFEST_URL=${TWRP_MANIFEST_URL:-https://github.com/ymdzq/manifest_twrp.git}
 MANIFEST_BRANCH=${TWRP_MANIFEST_BRANCH:-twrp-16.0}
+MINIMAL_MANIFEST_URL=${TWRP_MINIMAL_MANIFEST_URL:-https://gitlab.com/OrangeFox/Manifest/-/raw/4c65ca28fa67580172ee6bf99892a054c19dcebe/remove-minimal.xml}
 BUILD_LABEL=${BUILD_LABEL:-twrp_pipa_A16_${GITHUB_RUN_NUMBER:-local}_${GITHUB_SHA:0:8}}
 DEVICE_DIR="$BUILD_DIR/device/xiaomi/pipa"
 OUT_DIR="$BUILD_DIR/out/target/product/pipa"
@@ -40,6 +41,11 @@ if [ ! -d "$BUILD_DIR/.repo" ]; then
         -b "$MANIFEST_BRANCH"
 fi
 
+mkdir -p "$BUILD_DIR/.repo/local_manifests"
+curl --fail --location --retry 5 --retry-delay 3 \
+    "$MINIMAL_MANIFEST_URL" \
+    -o "$BUILD_DIR/.repo/local_manifests/zz-recovery-minimal.xml"
+
 for attempt in 1 2 3; do
     if repo sync -c -j"$BUILD_JOBS" --no-clone-bundle --no-tags --fail-fast; then
         break
@@ -51,6 +57,8 @@ for attempt in 1 2 3; do
     echo "repo sync failed; retrying in 15 seconds (${attempt}/3)"
     sleep 15
 done
+
+echo "Synced projects: $(repo list --path-only | wc -l)"
 
 rm -rf "$DEVICE_DIR"
 mkdir -p "$(dirname "$DEVICE_DIR")"

@@ -42,3 +42,6 @@ artifact；推送 `twrp-*` 标签或在手动运行中启用发布，会把 boot
 CI 使用 `patches/apply_all.sh` 以便携方式应用所有源码补丁，并把源码和输出放在
 GitHub Hosted Runner 的 `/mnt` 大容量临时盘上。详细说明见
 `.github/workflows/README.md`。
+
+CI 同时使用 OrangeFox 的固定版本 `remove-minimal.xml` 作为 repo local manifest，
+移除非 recovery 所需的完整 AOSP 项目，避免 Hosted Runner 在 Soong 后段耗尽磁盘。
