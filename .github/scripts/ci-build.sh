@@ -70,6 +70,17 @@ if grep -rIl $'\r' \
     exit 1
 fi
 
+# The source is fully checked out and patched at this point. The repo object
+# store is no longer needed by the build and can consume tens of GiB on the
+# cold AOSP checkout, which is enough to exhaust a hosted runner during the
+# final boot-image packaging steps.
+repo_size=$(du -sh "$BUILD_DIR/.repo" | awk '{print $1}')
+echo "Removing repo metadata ($repo_size) after successful checkout and patching"
+rm -rf "$BUILD_DIR/.repo"
+sync
+df -h "$BUILD_DIR"
+free -h
+
 ccache --max-size="${CCACHE_MAX_SIZE:-4G}"
 ccache --zero-stats
 
