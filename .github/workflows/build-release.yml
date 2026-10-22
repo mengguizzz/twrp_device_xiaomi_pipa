@@ -31,6 +31,7 @@ env:
   TWRP_BUILD_DIR: ${{ github.workspace }}/.ci/twrp16
   TWRP_RELEASE_DIR: ${{ github.workspace }}/.ci/release
   CCACHE_MAX_SIZE: 2G
+  SYNC_JOBS: 4
   BUILD_JOBS: 1
   MIN_FREE_GB: 60
   BUILD_LABEL: ${{ inputs.build_label }}

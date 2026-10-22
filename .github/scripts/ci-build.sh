@@ -6,6 +6,7 @@ BUILD_DIR=${TWRP_BUILD_DIR:-/mnt/twrp-ci/src}
 RELEASE_DIR=${TWRP_RELEASE_DIR:-/mnt/twrp-ci/release}
 DIAG_DIR=${TWRP_DIAG_DIR:-$SOURCE_REPO/.ci/diagnostics}
 CCACHE_DIR=${CCACHE_DIR:-$BUILD_DIR/.ccache}
+SYNC_JOBS=${SYNC_JOBS:-4}
 BUILD_JOBS=${BUILD_JOBS:-$(nproc)}
 MIN_FREE_GB=${MIN_FREE_GB:-45}
 MANIFEST_URL=${TWRP_MANIFEST_URL:-https://github.com/ymdzq/manifest_twrp.git}
@@ -104,7 +105,7 @@ if [ ! -d "$BUILD_DIR/.repo" ]; then
 fi
 
 for attempt in 1 2 3; do
-    if repo sync -c -j"$BUILD_JOBS" --no-clone-bundle --no-tags --fail-fast; then
+    if repo sync -c -j"$SYNC_JOBS" --no-clone-bundle --no-tags --fail-fast; then
         break
     fi
     if (( attempt == 3 )); then
