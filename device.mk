@@ -29,6 +29,7 @@ PRODUCT_PACKAGES += \
 PRODUCT_SOONG_NAMESPACES += \
     $(LOCAL_PATH)
 
-# OrangeFox 16.0 expects the MIUI prebuilt module used by this port.
-TWRP_REQUIRED_MODULES += miui_prebuilt
+# The fox_16.0 manifest does not provide the miui_prebuilt module used by the
+# reference 14.1 tree. Keep this disabled unless that module is added locally.
+# TWRP_REQUIRED_MODULES += miui_prebuilt
 
