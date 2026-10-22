@@ -71,11 +71,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo modprobe zram
-          sudo sed -i 's/^#PERCENT=50/PERCENT=90/' /etc/default/zramswap
-          sudo sed -i 's/^#PRIORITY=100/PRIORITY=1000/' /etc/default/zramswap
+          if ! sudo modprobe zram; then
+            kernel_release=$(uname -r)
+            module_work=$(mktemp -d /tmp/zram-modules.XXXXXX)
+            (
+              cd "$module_work"
+              apt-get download "linux-modules-extra-${kernel_release}"
+              dpkg-deb -x ./*.deb extracted
+              sudo cp -a "extracted/lib/modules/${kernel_release}/." \
+                "/lib/modules/${kernel_release}/"
+              sudo depmod -a "$kernel_release"
+            )
+            rm -rf "$module_work"
+            sudo modprobe zram
+          fi
+          sudo sed -i -E 's/^#?PERCENT=.*/PERCENT=90/' /etc/default/zramswap
+          sudo sed -i -E 's/^#?PRIORITY=.*/PRIORITY=1000/' /etc/default/zramswap
           sudo systemctl restart zramswap
           zramctl
+          sudo swapon --show
 
       - name: Set up OrangeFox 16.0 manifest
         shell: bash
