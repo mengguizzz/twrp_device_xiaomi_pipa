@@ -27,8 +27,11 @@ exec > >(tee -a "$DIAG_DIR/build.log") 2>&1
 
 # The maximize-build-space action mounts the large volume at the workspace,
 # while / can be intentionally tiny after that action. Keep temporary files
-# for repo, Soong and compiler wrappers on the large build volume.
-export TMPDIR="$BUILD_DIR/.tmp"
+# on the large build volume, but use a short /tmp symlink as their entry point:
+# repo's Python multiprocessing sockets have a 108-byte AF_UNIX path limit.
+SHORT_TMP="/tmp/twrp-ci-${GITHUB_RUN_ID:-$$}"
+ln -s "$BUILD_DIR/.tmp" "$SHORT_TMP"
+export TMPDIR="$SHORT_TMP"
 export TMP="$TMPDIR"
 export TEMP="$TMPDIR"
 export GOCACHE="$BUILD_DIR/.cache/go-build"
