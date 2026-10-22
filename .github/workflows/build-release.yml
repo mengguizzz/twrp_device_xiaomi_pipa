@@ -42,6 +42,9 @@ jobs:
     timeout-minutes: 360
 
     steps:
+      - name: Clean up hosted runner
+        uses: rokibhasansagar/slimhub_actions@main
+
       - name: Install build dependencies
         shell: bash
         run: |
@@ -64,7 +67,7 @@ jobs:
           remove-android: "true"
           remove-haskell: "true"
           remove-codeql: "true"
-          remove-docker-images: "true"
+          remove-docker-images: "false"
 
       - name: Check out device tree
         uses: actions/checkout@v4
@@ -149,6 +152,37 @@ jobs:
           path: ${{ github.workspace }}/.ci/release/*
           if-no-files-found: error
           retention-days: 7
+
+  diagnose:
+    needs: build
+    if: failure()
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Download complete Actions log
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p action-logs
+          curl --fail --location --retry 5 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/logs" \
+            -o action-logs.zip
+          unzip -q action-logs.zip -d action-logs
+
+      - name: Upload complete Actions log
+        uses: actions/upload-artifact@v4
+        with:
+          name: twrp-pipa-${{ github.run_number }}-action-logs
+          path: action-logs/**
+          if-no-files-found: error
 
   release:
     needs: build

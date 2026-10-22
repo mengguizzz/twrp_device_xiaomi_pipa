@@ -151,13 +151,6 @@ if grep -rIl $'\r' \
     exit 1
 fi
 
-# The source is fully checked out and patched at this point. The repo object
-# store is no longer needed by the build and can consume tens of GiB on the
-# cold AOSP checkout, which is enough to exhaust a hosted runner during the
-# final boot-image packaging steps.
-repo_size=$(du -sh "$BUILD_DIR/.repo" | awk '{print $1}')
-echo "Removing repo metadata ($repo_size) after successful checkout and patching"
-rm -rf "$BUILD_DIR/.repo"
 sync
 df -h "$BUILD_DIR"
 free -h
@@ -172,8 +165,6 @@ export CCACHE_EXEC
 export CCACHE_BASEDIR="$BUILD_DIR"
 export CCACHE_NOHASHDIR=true
 export CCACHE_SLOPPINESS=time_macros,file_macro
-export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Xmx3g -XX:ReservedCodeCacheSize=256m"
-
 # Soong's sandbox prevents the ccache action's compiler wrapper from working.
 sed -i 's/return sandboxConfig\.working/return false/g' \
     build/soong/ui/build/sandbox_linux.go
