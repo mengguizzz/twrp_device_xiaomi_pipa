@@ -126,12 +126,11 @@ VENDOR_SECURITY_PATCH := $(PLATFORM_SECURITY_PATCH)
 BOOT_SECURITY_PATCH := $(PLATFORM_SECURITY_PATCH)
 
 # Tool
-# TWRP-A16's Soong scanner rejects the legacy Android.mk in the upstream
-# Magisk prebuilt project. Repack tools are not required to boot recovery or
-# decrypt /data, so keep them disabled for this initial A16 compatibility test.
-# TW_INCLUDE_REPACKTOOLS := true
-# TW_INCLUDE_RESETPROP := true  # magisk-prebuilt Android.mk is blocked by A16 soong
-# TW_INCLUDE_LIBRESETPROP := true  # same reason
+# OrangeFox 12.1 provides compatible recovery-side magiskboot/resetprop
+# integration, including the repack path used to install the recovery ramdisk.
+TW_INCLUDE_REPACKTOOLS := true
+TW_INCLUDE_RESETPROP := true
+TW_INCLUDE_LIBRESETPROP := true
 TW_INCLUDE_LPDUMP := true
 TW_INCLUDE_LPTOOLS := true
 

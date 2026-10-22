@@ -1,4 +1,4 @@
-name: OrangeFox - Build pipa
+name: OrangeFox 12.1 - Build pipa
 
 on:
   workflow_dispatch:
@@ -20,19 +20,20 @@ permissions:
   contents: write
 
 concurrency:
-  group: orangefox-pipa-${{ github.ref }}-${{ github.sha }}
+  group: orangefox-12-pipa-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 env:
-  SOURCE_DIR: ${{ github.workspace }}/OrangeFox/fox_16.0
+  SOURCE_DIR: ${{ github.workspace }}/OrangeFox/fox_12.1
   RELEASE_DIR: ${{ github.workspace }}/release
   DEVICE_TREE_REPO: https://github.com/mengguizzz/twrp_device_xiaomi_pipa.git
+  DEVICE_TREE_BRANCH: orangefox-12.1
   DEVICE_PATH: device/xiaomi/pipa
-  BUILD_LABEL: orangefox_pipa_A16_${{ github.run_number }}_${{ github.sha }}
+  BUILD_LABEL: orangefox12_pipa_${{ github.run_number }}_${{ github.sha }}
 
 jobs:
   build:
-    name: Build OrangeFox by ${{ github.actor }}
+    name: Build OrangeFox 12.1 by ${{ github.actor }}
     runs-on: ubuntu-24.04
     timeout-minutes: 360
 
@@ -92,7 +93,7 @@ jobs:
           zramctl
           sudo swapon --show
 
-      - name: Set up OrangeFox 16.0 manifest
+      - name: Set up OrangeFox 12.1 manifest
         shell: bash
         run: |
           set -euo pipefail
@@ -102,20 +103,84 @@ jobs:
           git config --global user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
           git clone https://gitlab.com/OrangeFox/sync.git -b master
           cd sync
-          ./orangefox_sync.sh --branch 16.0 --path "$SOURCE_DIR"
+          ./orangefox_sync.sh --branch 12.1 --path "$SOURCE_DIR"
+
+      - name: Apply Android 13 dependencies for 12.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SOURCE_DIR"
+          sed -i \
+            's#<project name="android_hardware_qcom_bootctrl" path="hardware/qcom-caf/bootctrl" remote="LineageOS" revision="lineage-19.1-caf" />#<project name="android_hardware_qcom_bootctrl" path="hardware/qcom-caf/bootctrl" remote="LineageOS" revision="lineage-21.0-caf" />#g' \
+            .repo/manifests/twrp-default.xml
+          sed -i \
+            '/<!-- Include phh'\''s treble repo for lptools support -->/i\    <!-- Include libmicrohttpd for TWRP -->\n    <project name="adontoo/android_external_libmicrohttpd" path="external/libmicrohttpd" remote="github" revision="ofox-14.1" />' \
+            .repo/manifests/twrp-default.xml
+          sed -i \
+            '/<project path="bootable\/recovery" name="android_bootable_recovery" remote="TeamWin" revision="android-12.1"\/>/d' \
+            .repo/manifests/twrp-default.xml
+
+          mv bootable/recovery bootable/recovery-ofrp
+          repo sync -c -j4 --no-clone-bundle --no-tags
+          mv bootable/recovery-ofrp bootable/recovery
+
+          cd bionic
+          curl --fail --location --retry 3 \
+            "https://github.com/adontoo/OrangeFox-android_platform_bionic/commit/85b1a7100083006927376f30bb8a67885c6dd71f.patch" \
+            -o bionic.patch
+          git am bionic.patch
+
+          cd "$SOURCE_DIR/external/libmicrohttpd"
+          sed -i \
+            's/^static enum MHD_Result send_response/static enum MHD_Result __attribute__((unused)) send_response/' \
+            server.c
 
       - name: Clone pipa device tree
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$SOURCE_DIR/device/xiaomi"
-          git clone "$DEVICE_TREE_REPO" "$SOURCE_DIR/$DEVICE_PATH"
+          git clone --branch "$DEVICE_TREE_BRANCH" \
+            "$DEVICE_TREE_REPO" "$SOURCE_DIR/$DEVICE_PATH"
           cd "$SOURCE_DIR/$DEVICE_PATH"
           git fetch --depth=1 origin "$GITHUB_SHA"
           git checkout --detach "$GITHUB_SHA"
           git log -1 --oneline
 
-      - name: Build OrangeFox
+      - name: Update OrangeFox Magisk
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/ymdzq/twrp_prebuilt "$HOME/twrp_prebuilt"
+          cd "$SOURCE_DIR/$DEVICE_PATH"
+          if ! grep -q 'FOX_USE_SPECIFIC_MAGISK_ZIP' vendorsetup.sh; then
+            echo 'export FOX_USE_SPECIFIC_MAGISK_ZIP=$HOME/twrp_prebuilt/Magisk/Magisk.apk' \
+              >> vendorsetup.sh
+          fi
+          cd "$SOURCE_DIR/vendor/recovery"
+          curl --fail --location --retry 3 \
+            "https://github.com/ymdzq/scripts/raw/main/Magisk_ver.patch" \
+            -o Magisk_ver.patch
+          git am Magisk_ver.patch
+
+      - name: Update OrangeFox magiskboot
+        shell: bash
+        run: |
+          set -euo pipefail
+          magisk_url=$(curl --fail --silent --show-error \
+            "https://api.github.com/repos/topjohnwu/Magisk/releases?per_page=1&include_prereleases=true" \
+            | jq -r '.[0].assets[] | select(.name | test("Magisk-.*\\.apk")) | .browser_download_url')
+          curl --fail --location --retry 3 "$magisk_url" -o "$RUNNER_TEMP/Magisk.apk"
+          unzip -q "$RUNNER_TEMP/Magisk.apk" \
+            "lib/*/libmagiskboot.so" -d "$RUNNER_TEMP/magiskboot"
+          cp -f "$RUNNER_TEMP/magiskboot/lib/armeabi-v7a/libmagiskboot.so" \
+            "$SOURCE_DIR/vendor/recovery/prebuilt/arm/magiskboot_updated"
+          cp -f "$RUNNER_TEMP/magiskboot/lib/arm64-v8a/libmagiskboot.so" \
+            "$SOURCE_DIR/vendor/recovery/prebuilt/arm64/magiskboot_updated"
+          cp -f "$RUNNER_TEMP/magiskboot/lib/x86_64/libmagiskboot.so" \
+            "$SOURCE_DIR/vendor/recovery/tools/magiskboot"
+
+      - name: Build OrangeFox 12.1
         shell: bash
         run: |
           set -euo pipefail
@@ -128,8 +193,7 @@ jobs:
             build/soong/ui/build/sandbox_linux.go
           set +u
           source build/envsetup.sh
-          set -u
-          lunch twrp_pipa-bp2a-eng
+          lunch twrp_pipa-eng
           make clean
           mka adbd bootimage
 
@@ -139,18 +203,17 @@ jobs:
           set -euo pipefail
           OUT_DIR="$SOURCE_DIR/out/target/product/pipa"
           mkdir -p "$RELEASE_DIR"
-
-          mapfile -t built_images < <(
+          mapfile -t built_files < <(
             find "$OUT_DIR" -maxdepth 1 -type f \
               \( -name 'OrangeFox*.img' -o -name 'OrangeFox*.zip' -o -name 'boot.img' \) \
               -print | sort
           )
-          if (( ${#built_images[@]} == 0 )); then
+          if (( ${#built_files[@]} == 0 )); then
             echo "OrangeFox produced no images in $OUT_DIR" >&2
             find "$OUT_DIR" -maxdepth 2 -type f | sort | tail -100 >&2
             exit 1
           fi
-          cp -v "${built_images[@]}" "$RELEASE_DIR/"
+          cp -v "${built_files[@]}" "$RELEASE_DIR/"
 
           if [[ -f "$OUT_DIR/boot.img" ]]; then
             cp "$OUT_DIR/boot.img" "$RELEASE_DIR/${BUILD_LABEL}_boot.img"
@@ -164,14 +227,13 @@ jobs:
             echo "Unexpected kernel: $actual_kernel" >&2
             exit 1
           fi
-
           grep -q '^ro.color597.product_name=Xiaomi Pad 6$' \
             "$OUT_DIR/recovery/root/prop.default"
 
           {
             echo "device=pipa"
-            echo "ui=OrangeFox"
-            echo "manifest=OrangeFox/Manifest:fox_16.0"
+            echo "ui=OrangeFox 12.1"
+            echo "manifest=OrangeFox minimal manifest:12.1"
             echo "device_tree_commit=$GITHUB_SHA"
             echo "workflow_run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             echo "kernel_sha256=$actual_kernel"
@@ -180,7 +242,6 @@ jobs:
               echo "$(basename "$image")_sha256=$(sha256sum "$image" | awk '{print $1}')"
             done
           } > "$RELEASE_DIR/BUILD_INFO.txt"
-
           find "$RELEASE_DIR" -maxdepth 1 -type f \
             ! -name SHA256SUMS.txt -print0 \
             | sort -z \
@@ -191,11 +252,9 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo "# Xiaomi Pad 6 (pipa) OrangeFox"
+            echo "# Xiaomi Pad 6 (pipa) OrangeFox 12.1"
             echo
-            echo "Built from OrangeFox fox_16.0 and device-tree commit \`$GITHUB_SHA\`."
-            echo
-            echo "## Build information"
+            echo "Built with the OrangeFox 12.1 minimal manifest and device-tree commit \`$GITHUB_SHA\`."
             echo
             echo '```'
             cat "$RELEASE_DIR/BUILD_INFO.txt"
@@ -207,41 +266,10 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: orangefox-pipa-${{ github.run_number }}
+          name: orangefox12-pipa-${{ github.run_number }}
           path: ${{ env.RELEASE_DIR }}/*
           if-no-files-found: error
           retention-days: 7
-
-  diagnose:
-    needs: build
-    if: failure()
-    runs-on: ubuntu-24.04
-    permissions:
-      actions: read
-      contents: read
-
-    steps:
-      - name: Download complete Actions log
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          mkdir -p action-logs
-          curl --fail --location --retry 5 \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/logs" \
-            -o action-logs.zip
-          unzip -q action-logs.zip -d action-logs
-
-      - name: Upload complete Actions log
-        uses: actions/upload-artifact@v4
-        with:
-          name: orangefox-pipa-${{ github.run_number }}-action-logs
-          path: action-logs/**
-          if-no-files-found: error
 
   release:
     needs: build
@@ -256,7 +284,7 @@ jobs:
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
-          name: orangefox-pipa-${{ github.run_number }}
+          name: orangefox12-pipa-${{ github.run_number }}
           path: release
 
       - name: Resolve release tag
@@ -282,7 +310,7 @@ jobs:
         with:
           tag_name: ${{ steps.release.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: OrangeFox for Xiaomi Pad 6 - ${{ steps.release.outputs.tag }}
+          name: OrangeFox 12.1 for Xiaomi Pad 6 - ${{ steps.release.outputs.tag }}
           body_path: release/release-notes.md
           files: release/*
           draft: false

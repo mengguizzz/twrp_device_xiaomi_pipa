@@ -4,7 +4,7 @@ export ALLOW_MISSING_DEPENDENCIES=true
 echo -e "\x1b[96mpipa: Start adding OrangeFox Vars...\x1b[m"
 export OF_MAINTAINER=pipaDB
 export FOX_MAINTAINER_PATCH_VERSION=$(date +%y%m%d)
-export FOX_VARIANT=pipaDB-A16
+export FOX_VARIANT=pipa-A17-OF12
 export FOX_USE_TAR_BINARY=1
 export FOX_USE_LZ4_BINARY=1
 export FOX_USE_ZSTD_BINARY=1

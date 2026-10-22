@@ -29,3 +29,6 @@ PRODUCT_PACKAGES += \
 PRODUCT_SOONG_NAMESPACES += \
     $(LOCAL_PATH)
 
+# OrangeFox 12.1 provides this MIUI compatibility module.
+TWRP_REQUIRED_MODULES += miui_prebuilt
+
