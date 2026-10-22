@@ -1,43 +1,38 @@
-name: Build TWRP pipa
+name: OrangeFox - Build pipa
 
 on:
   workflow_dispatch:
     inputs:
-      release_tag:
-        description: Release tag used when publish_release is enabled
-        required: false
-        type: string
-      build_label:
-        description: Optional artifact filename prefix
-        required: false
-        type: string
       publish_release:
         description: Publish the generated images as a GitHub Release
         required: true
         default: false
         type: boolean
+      release_tag:
+        description: Release tag used when publish_release is enabled
+        required: false
+        type: string
   push:
     tags:
-      - "twrp-*"
+      - "orangefox-*"
 
 permissions:
   contents: write
 
 concurrency:
-  group: twrp-pipa-${{ github.ref }}-${{ github.sha }}
+  group: orangefox-pipa-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 env:
-  TWRP_BUILD_DIR: ${{ github.workspace }}/.ci/twrp16
-  TWRP_RELEASE_DIR: ${{ github.workspace }}/.ci/release
-  CCACHE_MAX_SIZE: 2G
-  SYNC_JOBS: 4
-  BUILD_JOBS: 1
-  MIN_FREE_GB: 60
-  BUILD_LABEL: ${{ inputs.build_label }}
+  SOURCE_DIR: ${{ github.workspace }}/OrangeFox/fox_16.0
+  RELEASE_DIR: ${{ github.workspace }}/release
+  DEVICE_TREE_REPO: https://github.com/mengguizzz/twrp_device_xiaomi_pipa.git
+  DEVICE_PATH: device/xiaomi/pipa
+  BUILD_LABEL: orangefox_pipa_A16_${{ github.run_number }}_${{ github.sha }}
 
 jobs:
   build:
+    name: Build OrangeFox by ${{ github.actor }}
     runs-on: ubuntu-24.04
     timeout-minutes: 360
 
@@ -45,34 +40,24 @@ jobs:
       - name: Clean up hosted runner
         uses: rokibhasansagar/slimhub_actions@main
 
-      - name: Install build dependencies
+      - name: Build environment
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --location --retry 5 --retry-delay 3 \
-            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/.github/scripts/install-deps.sh" \
-            -o "$RUNNER_TEMP/install-deps.sh"
-          bash "$RUNNER_TEMP/install-deps.sh"
+          sudo apt install aria2 linux-modules-extra-$(uname -r) zram-tools -y
+          git clone https://gitlab.com/OrangeFox/misc/scripts.git -b master
+          cd scripts
+          sudo bash setup/android_build_env.sh
+          cd ..
+          rm -rf scripts
+          sudo apt autoclean >/dev/null || true
+          sudo apt autoremove -qy 2>/dev/null || true
+          sudo rm -rf /var/cache/apt/archives/ 2>/dev/null || true
 
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
-          # Keep enough room on / for /tmp, Runner diagnostics and system
-          # services. The previous 3 GiB reserve ended up at only 256 MiB
-          # after the post-space action tooling started.
-          root-reserve-mb: "12288"
-          temp-reserve-mb: "1024"
-          swap-size-mb: "4096"
-          remove-dotnet: "true"
-          remove-android: "true"
-          remove-haskell: "true"
-          remove-codeql: "true"
-          remove-docker-images: "false"
-
-      - name: Check out device tree
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+          root-reserve-mb: "3072"
 
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2
@@ -84,72 +69,129 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if sudo modprobe zram; then
-            sudo sed -i 's/^#PERCENT=.*/PERCENT=90/' /etc/default/zramswap
-            sudo sed -i 's/^#PRIORITY=.*/PRIORITY=1000/' /etc/default/zramswap
-            sudo systemctl restart zramswap || true
-            zramctl
-          else
-            echo "zram is unavailable on this runner kernel; continuing without it"
-          fi
+          sudo modprobe zram
+          sudo sed -i 's/^#PERCENT=50/PERCENT=90/' /etc/default/zramswap
+          sudo sed -i 's/^#PRIORITY=100/PRIORITY=1000/' /etc/default/zramswap
+          sudo systemctl restart zramswap
+          zramctl
 
-      - name: Show build storage
-        run: |
-          df -h /
-          df -h "$RUNNER_WORKSPACE"
-
-      - name: Build recovery images
-        id: build
+      - name: Set up OrangeFox 16.0 manifest
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "${BUILD_LABEL:-}" ]]; then
-            export BUILD_LABEL="twrp_pipa_A16_${GITHUB_RUN_NUMBER}_${GITHUB_SHA:0:8}"
+          mkdir -p "$GITHUB_WORKSPACE/OrangeFox"
+          cd "$GITHUB_WORKSPACE/OrangeFox"
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
+          git clone https://gitlab.com/OrangeFox/sync.git -b master
+          cd sync
+          ./orangefox_sync.sh --branch 16.0 --path "$SOURCE_DIR"
+
+      - name: Clone pipa device tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$SOURCE_DIR/device/xiaomi"
+          git clone "$DEVICE_TREE_REPO" "$SOURCE_DIR/$DEVICE_PATH"
+          cd "$SOURCE_DIR/$DEVICE_PATH"
+          git fetch --depth=1 origin "$GITHUB_SHA"
+          git checkout --detach "$GITHUB_SHA"
+          git log -1 --oneline
+
+      - name: Build OrangeFox
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SOURCE_DIR"
+          export FOX_BUILD_DEVICE=pipa
+          export USE_CCACHE=1
+          export CCACHE_EXEC=/usr/bin/ccache
+          export ALLOW_MISSING_DEPENDENCIES=true
+          sed -i 's/return sandboxConfig\.working/return false/g' \
+            build/soong/ui/build/sandbox_linux.go
+          set +u
+          source build/envsetup.sh
+          set -u
+          lunch twrp_pipa-bp2a-eng
+          make clean
+          mka adbd bootimage
+
+      - name: Collect recovery images
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT_DIR="$SOURCE_DIR/out/target/product/pipa"
+          mkdir -p "$RELEASE_DIR"
+
+          mapfile -t built_images < <(
+            find "$OUT_DIR" -maxdepth 1 -type f \
+              \( -name 'OrangeFox*.img' -o -name 'OrangeFox*.zip' -o -name 'boot.img' \) \
+              -print | sort
+          )
+          if (( ${#built_images[@]} == 0 )); then
+            echo "OrangeFox produced no images in $OUT_DIR" >&2
+            find "$OUT_DIR" -maxdepth 2 -type f | sort | tail -100 >&2
+            exit 1
           fi
-          bash .github/scripts/ci-build.sh
+          cp -v "${built_images[@]}" "$RELEASE_DIR/"
+
+          if [[ -f "$OUT_DIR/boot.img" ]]; then
+            cp "$OUT_DIR/boot.img" "$RELEASE_DIR/${BUILD_LABEL}_boot.img"
+            python3 "$SOURCE_DIR/$DEVICE_PATH/tools/make_fbboot_image.py" \
+              "$OUT_DIR/boot.img" "$RELEASE_DIR/${BUILD_LABEL}_fbboot.img"
+          fi
+
+          expected_kernel=25536e9f31493c39089a6279786fb89fb548fad412c49ef8e8b8c565872b3554
+          actual_kernel=$(sha256sum "$OUT_DIR/kernel" | awk '{print $1}')
+          if [[ "$actual_kernel" != "$expected_kernel" ]]; then
+            echo "Unexpected kernel: $actual_kernel" >&2
+            exit 1
+          fi
+
+          grep -q '^ro.color597.product_name=Xiaomi Pad 6$' \
+            "$OUT_DIR/recovery/root/prop.default"
+
+          {
+            echo "device=pipa"
+            echo "ui=OrangeFox"
+            echo "manifest=OrangeFox/Manifest:fox_16.0"
+            echo "device_tree_commit=$GITHUB_SHA"
+            echo "workflow_run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "kernel_sha256=$actual_kernel"
+            for image in "$RELEASE_DIR"/*; do
+              [[ -f "$image" ]] || continue
+              echo "$(basename "$image")_sha256=$(sha256sum "$image" | awk '{print $1}')"
+            done
+          } > "$RELEASE_DIR/BUILD_INFO.txt"
+
+          find "$RELEASE_DIR" -maxdepth 1 -type f \
+            ! -name SHA256SUMS.txt -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > "$RELEASE_DIR/SHA256SUMS.txt"
 
       - name: Write release notes
         shell: bash
         run: |
           set -euo pipefail
           {
-            echo "# Xiaomi Pad 6 (pipa) TWRP"
+            echo "# Xiaomi Pad 6 (pipa) OrangeFox"
             echo
-            echo "Built from device-tree commit \`$GITHUB_SHA\`."
-            echo
-            echo "## Files"
-            echo
-            echo "- \`*_boot.img\`: flash this image directly."
-            echo "- \`*_fbboot.img\`: optional temporary \`fastboot boot\` image. Never flash this variant."
+            echo "Built from OrangeFox fox_16.0 and device-tree commit \`$GITHUB_SHA\`."
             echo
             echo "## Build information"
             echo
             echo '```'
-            cat "$TWRP_RELEASE_DIR/BUILD_INFO.txt"
+            cat "$RELEASE_DIR/BUILD_INFO.txt"
             echo '```'
             echo
-            echo "## SHA-256"
-            echo
-            echo '```'
-            cat "$TWRP_RELEASE_DIR/SHA256SUMS.txt"
-            echo '```'
-            echo
-            echo "The test recovery is based on TWRP 16 and preserves the Pixel/A17-style keymaster property overrides used by this port."
-          } > "$TWRP_RELEASE_DIR/release-notes.md"
-
-      - name: Upload failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: twrp-pipa-${{ github.run_number }}-diagnostics
-          path: ${{ github.workspace }}/.ci/diagnostics/*
-          if-no-files-found: warn
+            echo "Flash the produced boot image directly. The fbboot image is only for \`fastboot boot\` and must not be flashed."
+          } > "$RELEASE_DIR/release-notes.md"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: twrp-pipa-${{ github.run_number }}
-          path: ${{ github.workspace }}/.ci/release/*
+          name: orangefox-pipa-${{ github.run_number }}
+          path: ${{ env.RELEASE_DIR }}/*
           if-no-files-found: error
           retention-days: 7
 
@@ -180,14 +222,14 @@ jobs:
       - name: Upload complete Actions log
         uses: actions/upload-artifact@v4
         with:
-          name: twrp-pipa-${{ github.run_number }}-action-logs
+          name: orangefox-pipa-${{ github.run_number }}-action-logs
           path: action-logs/**
           if-no-files-found: error
 
   release:
     needs: build
     if: >-
-      startsWith(github.ref, 'refs/tags/twrp-') ||
+      startsWith(github.ref, 'refs/tags/orangefox-') ||
       (github.event_name == 'workflow_dispatch' && inputs.publish_release)
     runs-on: ubuntu-24.04
     permissions:
@@ -197,7 +239,7 @@ jobs:
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
-          name: twrp-pipa-${{ github.run_number }}
+          name: orangefox-pipa-${{ github.run_number }}
           path: release
 
       - name: Resolve release tag
@@ -223,7 +265,7 @@ jobs:
         with:
           tag_name: ${{ steps.release.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: TWRP for Xiaomi Pad 6 - ${{ steps.release.outputs.tag }}
+          name: OrangeFox for Xiaomi Pad 6 - ${{ steps.release.outputs.tag }}
           body_path: release/release-notes.md
           files: release/*
           draft: false
