@@ -29,6 +29,7 @@ PRODUCT_PACKAGES += \
 PRODUCT_SOONG_NAMESPACES += \
     $(LOCAL_PATH)
 
-# OrangeFox 12.1 provides this MIUI compatibility module.
-TWRP_REQUIRED_MODULES += miui_prebuilt
+# The twrp-14 manifest and vendor/twrp android-14 tree do not define this
+# module. Keep it disabled on OrangeFox 14.1.
+# TWRP_REQUIRED_MODULES += miui_prebuilt
 
