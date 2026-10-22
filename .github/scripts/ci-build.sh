@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -eEuo pipefail
 
 SOURCE_REPO=${GITHUB_WORKSPACE:?GITHUB_WORKSPACE is required}
 BUILD_DIR=${TWRP_BUILD_DIR:-/mnt/twrp-ci/src}
@@ -21,6 +21,10 @@ export CCACHE_DIR
 mkdir -p "$BUILD_DIR/.tmp" "$BUILD_DIR/.cache/go-build" \
     "$RELEASE_DIR" "$DIAG_DIR" "$CCACHE_DIR"
 
+# Keep a copy of stdout/stderr in the diagnostics artifact, not only in the
+# Actions log. This makes ordinary script failures inspectable from the API.
+exec > >(tee -a "$DIAG_DIR/build.log") 2>&1
+
 # The maximize-build-space action mounts the large volume at the workspace,
 # while / can be intentionally tiny after that action. Keep temporary files
 # for repo, Soong and compiler wrappers on the large build volume.
@@ -31,6 +35,14 @@ export GOCACHE="$BUILD_DIR/.cache/go-build"
 export GOTMPDIR="$TMPDIR"
 export CCACHE_TEMPDIR="$BUILD_DIR/.cache/ccache-tmp"
 mkdir -p "$CCACHE_TEMPDIR"
+
+echo "Build paths:"
+echo "  source=$SOURCE_REPO"
+echo "  build=$BUILD_DIR"
+echo "  release=$RELEASE_DIR"
+echo "  diagnostics=$DIAG_DIR"
+echo "  TMPDIR=$TMPDIR"
+echo "  sync_jobs=$SYNC_JOBS build_jobs=$BUILD_JOBS"
 
 RESOURCE_LOG="$DIAG_DIR/resources.log"
 FAILURE_LOG="$DIAG_DIR/failure.log"
