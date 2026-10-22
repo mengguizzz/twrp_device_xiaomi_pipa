@@ -29,3 +29,6 @@ PRODUCT_PACKAGES += \
 PRODUCT_SOONG_NAMESPACES += \
     $(LOCAL_PATH)
 
+# OrangeFox 16.0 expects the MIUI prebuilt module used by this port.
+TWRP_REQUIRED_MODULES += miui_prebuilt
+

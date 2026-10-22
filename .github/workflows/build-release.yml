@@ -27,6 +27,7 @@ env:
   SOURCE_DIR: ${{ github.workspace }}/OrangeFox/fox_16.0
   RELEASE_DIR: ${{ github.workspace }}/release
   DEVICE_TREE_REPO: https://github.com/mengguizzz/twrp_device_xiaomi_pipa.git
+  DEVICE_TREE_BRANCH: orangefox-16.0
   DEVICE_PATH: device/xiaomi/pipa
   BUILD_LABEL: orangefox_pipa_A16_${{ github.run_number }}_${{ github.sha }}
 
@@ -109,7 +110,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$SOURCE_DIR/device/xiaomi"
-          git clone "$DEVICE_TREE_REPO" "$SOURCE_DIR/$DEVICE_PATH"
+          git clone --branch "$DEVICE_TREE_BRANCH" \
+            "$DEVICE_TREE_REPO" "$SOURCE_DIR/$DEVICE_PATH"
           cd "$SOURCE_DIR/$DEVICE_PATH"
           git fetch --depth=1 origin "$GITHUB_SHA"
           git checkout --detach "$GITHUB_SHA"
@@ -128,7 +130,6 @@ jobs:
             build/soong/ui/build/sandbox_linux.go
           set +u
           source build/envsetup.sh
-          set -u
           lunch twrp_pipa-bp2a-eng
           make clean
           mka adbd bootimage
