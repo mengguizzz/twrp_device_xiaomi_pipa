@@ -4,7 +4,8 @@ set -euo pipefail
 SOURCE_REPO=${GITHUB_WORKSPACE:?GITHUB_WORKSPACE is required}
 BUILD_DIR=${TWRP_BUILD_DIR:-/mnt/twrp-ci/src}
 RELEASE_DIR=${TWRP_RELEASE_DIR:-/mnt/twrp-ci/release}
-CCACHE_DIR=${CCACHE_DIR:-$HOME/.cache/ccache/twrp16}
+DIAG_DIR=${TWRP_DIAG_DIR:-$SOURCE_REPO/.ci/diagnostics}
+CCACHE_DIR=${CCACHE_DIR:-$BUILD_DIR/.ccache}
 BUILD_JOBS=${BUILD_JOBS:-$(nproc)}
 MIN_FREE_GB=${MIN_FREE_GB:-45}
 MANIFEST_URL=${TWRP_MANIFEST_URL:-https://github.com/ymdzq/manifest_twrp.git}
@@ -16,7 +17,69 @@ OUT_DIR="$BUILD_DIR/out/target/product/pipa"
 export PATH="$HOME/.local/bin:$PATH"
 export CCACHE_DIR
 
-mkdir -p "$BUILD_DIR" "$RELEASE_DIR" "$CCACHE_DIR"
+mkdir -p "$BUILD_DIR/.tmp" "$BUILD_DIR/.cache/go-build" \
+    "$RELEASE_DIR" "$DIAG_DIR" "$CCACHE_DIR"
+
+# The maximize-build-space action mounts the large volume at the workspace,
+# while / can be intentionally tiny after that action. Keep temporary files
+# for repo, Soong and compiler wrappers on the large build volume.
+export TMPDIR="$BUILD_DIR/.tmp"
+export TMP="$TMPDIR"
+export TEMP="$TMPDIR"
+export GOCACHE="$BUILD_DIR/.cache/go-build"
+export GOTMPDIR="$TMPDIR"
+export CCACHE_TEMPDIR="$BUILD_DIR/.cache/ccache-tmp"
+mkdir -p "$CCACHE_TEMPDIR"
+
+RESOURCE_LOG="$DIAG_DIR/resources.log"
+FAILURE_LOG="$DIAG_DIR/failure.log"
+record_resources() {
+    local tick=0
+    while kill -0 $$ 2>/dev/null; do
+        local mem swap root_avail build_avail top_proc now
+        mem=$(free -m | awk '/^Mem:/ { print $3 "/" $2 }')
+        swap=$(free -m | awk '/^Swap:/ { print $3 "/" $2 }')
+        root_avail=$(df -Pm / | awk 'NR == 2 { print $4 }')
+        build_avail=$(df -Pm "$BUILD_DIR" | awk 'NR == 2 { print $4 }')
+        top_proc=$(ps -eo pid,ppid,pmem,rss,comm --sort=-rss | sed -n '2p')
+        now=$(date -u +%FT%TZ)
+        {
+            printf '%s mem=%sMiB swap=%sMiB root_avail=%sMiB build_avail=%sMiB top="%s"\n' \
+                "$now" "$mem" "$swap" "$root_avail" "$build_avail" "$top_proc"
+            df -h / "$BUILD_DIR"
+            free -h
+            ps -eo pid,ppid,pmem,rss,comm --sort=-rss | head -15
+        } >> "$RESOURCE_LOG"
+
+        # Keep a compact timeline in the Actions log too. If the runner is
+        # terminated, these are the last visible resource measurements.
+        if (( tick % 2 == 0 )); then
+            echo "RESOURCE $now mem=${mem}MiB swap=${swap}MiB root_avail=${root_avail}MiB build_avail=${build_avail}MiB top=${top_proc}"
+        fi
+        tick=$((tick + 1))
+        sleep 30
+    done
+}
+
+record_resources &
+RESOURCE_MONITOR_PID=$!
+cleanup() {
+    local status=$?
+    trap - EXIT
+    kill "$RESOURCE_MONITOR_PID" 2>/dev/null || true
+    if (( status != 0 )); then
+        {
+            echo "exit_status=$status"
+            date -u
+            df -h / "$BUILD_DIR"
+            free -h
+            ps -eo pid,ppid,pmem,rss,comm --sort=-rss | head -30
+            sudo dmesg --ctime | tail -200 || true
+        } > "$FAILURE_LOG" 2>&1
+    fi
+    exit "$status"
+}
+trap cleanup EXIT
 
 free_gb=$(df -Pk "$BUILD_DIR" | awk 'NR == 2 { printf "%d", $4 / 1024 / 1024 }')
 if (( free_gb < MIN_FREE_GB )); then
@@ -93,6 +156,7 @@ export CCACHE_EXEC
 export CCACHE_BASEDIR="$BUILD_DIR"
 export CCACHE_NOHASHDIR=true
 export CCACHE_SLOPPINESS=time_macros,file_macro
+export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Xmx3g -XX:ReservedCodeCacheSize=256m"
 
 # Soong's sandbox prevents the ccache action's compiler wrapper from working.
 sed -i 's/return sandboxConfig\.working/return false/g' \

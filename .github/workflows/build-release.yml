@@ -53,9 +53,12 @@ jobs:
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
-          root-reserve-mb: "3072"
-          temp-reserve-mb: "256"
-          swap-size-mb: "8192"
+          # Keep enough room on / for /tmp, Runner diagnostics and system
+          # services. The previous 3 GiB reserve ended up at only 256 MiB
+          # after the post-space action tooling started.
+          root-reserve-mb: "12288"
+          temp-reserve-mb: "1024"
+          swap-size-mb: "4096"
           remove-dotnet: "true"
           remove-android: "true"
           remove-haskell: "true"
@@ -129,6 +132,14 @@ jobs:
             echo
             echo "The test recovery is based on TWRP 16 and preserves the Pixel/A17-style keymaster property overrides used by this port."
           } > "$TWRP_RELEASE_DIR/release-notes.md"
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: twrp-pipa-${{ github.run_number }}-diagnostics
+          path: ${{ github.workspace }}/.ci/diagnostics/*
+          if-no-files-found: warn
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
