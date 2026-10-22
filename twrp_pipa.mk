@@ -15,8 +15,9 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/base.mk)
 # Enable virtual A/B OTA
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota.mk)
 
-# Installs GSI keys into the ramdisk for verified boot.
-$(call inherit-product, $(SRC_TARGET_DIR)/product/gsi_keys.mk)
+# The fox_16.0 minimal manifest does not provide this optional product
+# fragment. The device does not require GSI keys for this recovery build.
+# $(call inherit-product, $(SRC_TARGET_DIR)/product/gsi_keys.mk)
 
 # Inherit from pipa device
 $(call inherit-product, device/xiaomi/pipa/device.mk)
