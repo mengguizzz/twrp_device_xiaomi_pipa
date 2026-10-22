@@ -119,8 +119,11 @@ TARGET_RECOVERY_DEFAULT_TOUCH_ROTATION := ROTATION_RIGHT
 
 # Crypto
 TW_INCLUDE_CRYPTO := true
-# PLATFORM_VERSION is supplied by the selected Android release config.
-# Do not override it here: the AP2A release is Android 14.
+# The OrangeFox 12.1/14.1 source uses this value when creating the boot-image
+# os_version. Keep it aligned with the recovery header that successfully
+# decrypted the Android 17 ROM.
+PLATFORM_VERSION := 16
+PLATFORM_VERSION_LAST_STABLE := $(PLATFORM_VERSION)
 PLATFORM_SECURITY_PATCH := 2099-12-31
 VENDOR_SECURITY_PATCH := $(PLATFORM_SECURITY_PATCH)
 BOOT_SECURITY_PATCH := $(PLATFORM_SECURITY_PATCH)

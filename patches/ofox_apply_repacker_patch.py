@@ -7,20 +7,35 @@ from pathlib import Path
 
 HELPER_FILE = Path(__file__).resolve().parent / "repacker_normalize.cpp.txt"
 
-OLD_INCLUDES = "#include <format>\n#include <string>\n#include <sys/mount.h>\n#include <sys/wait.h>\n"
-NEW_INCLUDES = (
-    "#include <fcntl.h>\n"
-    "#include <algorithm>\n"
-    "#include <cstdint>\n"
-    "#include <cstdlib>\n"
-    "#include <cstring>\n"
-    "#include <format>\n"
-    "#include <string>\n"
-    "#include <sys/mount.h>\n"
-    "#include <sys/wait.h>\n"
-    "#include <unistd.h>\n\n"
-    "#include <android-base/properties.h>\n"
-    "#include <android-base/unique_fd.h>\n"
+INCLUDE_BLOCKS = (
+    (
+        "#include <format>\n#include <string>\n#include <sys/mount.h>\n#include <sys/wait.h>\n",
+        "#include <fcntl.h>\n"
+        "#include <algorithm>\n"
+        "#include <cstdint>\n"
+        "#include <cstdlib>\n"
+        "#include <cstring>\n"
+        "#include <format>\n"
+        "#include <string>\n"
+        "#include <sys/mount.h>\n"
+        "#include <sys/wait.h>\n"
+        "#include <unistd.h>\n\n"
+        "#include <android-base/properties.h>\n"
+        "#include <android-base/unique_fd.h>\n",
+    ),
+    (
+        '#include <string>\n\n#include "data.hpp"',
+        "#include <fcntl.h>\n"
+        "#include <algorithm>\n"
+        "#include <cstdint>\n"
+        "#include <cstdlib>\n"
+        "#include <cstring>\n"
+        "#include <string>\n"
+        "#include <unistd.h>\n\n"
+        "#include <android-base/properties.h>\n"
+        "#include <android-base/unique_fd.h>\n\n"
+        '#include "data.hpp"',
+    ),
 )
 
 ANCHORS = (
@@ -46,14 +61,17 @@ def main():
         print("already patched")
         return
     helper = HELPER_FILE.read_text(encoding="utf-8")
-    if OLD_INCLUDES not in src:
+    include_block = next(
+        ((old, new) for old, new in INCLUDE_BLOCKS if old in src), None
+    )
+    if include_block is None:
         sys.exit("include block not found")
     anchor = next((candidate for candidate in ANCHORS if candidate in src), None)
     if anchor is None:
         sys.exit("anchor not found")
     if CALL_RE.search(src) is None:
         sys.exit("call site not found")
-    src = src.replace(OLD_INCLUDES, NEW_INCLUDES, 1)
+    src = src.replace(include_block[0], include_block[1], 1)
     src = src.replace(anchor, helper + anchor, 1)
     src = CALL_RE.sub(
         lambda match: (

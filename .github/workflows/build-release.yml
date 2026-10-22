@@ -117,6 +117,13 @@ jobs:
           git checkout --detach "$GITHUB_SHA"
           git log -1 --oneline
 
+      - name: Patch repacker for A17 boot headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$SOURCE_DIR/$DEVICE_PATH/patches/ofox_apply_repacker_patch.py" \
+            "$SOURCE_DIR"
+
       - name: Build OrangeFox 14.1
         shell: bash
         run: |
