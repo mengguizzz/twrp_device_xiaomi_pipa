@@ -44,7 +44,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt install aria2 linux-modules-extra-$(uname -r) zram-tools -y
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            --no-install-recommends aria2 zram-tools
           git clone https://gitlab.com/OrangeFox/misc/scripts.git -b master
           cd scripts
           sudo bash setup/android_build_env.sh
