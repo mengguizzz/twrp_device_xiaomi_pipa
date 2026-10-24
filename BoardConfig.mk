@@ -47,7 +47,10 @@ QCOM_BOARD_PLATFORMS += kona
 # Kernel
 BOARD_KERNEL_IMAGE_NAME := Image
 BOARD_BOOT_HEADER_VERSION := 3
-BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOT_HEADER_VERSION)
+BOARD_MKBOOTIMG_ARGS += \
+    --header_version $(BOARD_BOOT_HEADER_VERSION) \
+    --os_version 16.0.0 \
+    --os_patch_level 2099-12
 
 # Kernel - prebuilt
 TARGET_FORCE_PREBUILT_KERNEL := true
@@ -119,11 +122,9 @@ TARGET_RECOVERY_DEFAULT_TOUCH_ROTATION := ROTATION_RIGHT
 
 # Crypto
 TW_INCLUDE_CRYPTO := true
-# The OrangeFox 12.1/14.1 source uses this value when creating the boot-image
-# os_version. Keep it aligned with the recovery header that successfully
-# decrypted the Android 17 ROM.
-PLATFORM_VERSION := 16
-PLATFORM_VERSION_LAST_STABLE := $(PLATFORM_VERSION)
+# Keep the platform version supplied by OrangeFox 14.1. The boot-image header
+# version needed for the Android 17 keymaster is set via BOARD_MKBOOTIMG_ARGS
+# above, avoiding an invalid "platform version 16" in the Android 14 CTS data.
 PLATFORM_SECURITY_PATCH := 2099-12-31
 VENDOR_SECURITY_PATCH := $(PLATFORM_SECURITY_PATCH)
 BOOT_SECURITY_PATCH := $(PLATFORM_SECURITY_PATCH)
